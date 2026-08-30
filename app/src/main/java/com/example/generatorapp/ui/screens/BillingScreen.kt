@@ -187,31 +187,31 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                     val generator = selectedGenerator
                     if (subscriber == null || generator == null) {
                         Toast.makeText(context, "اختر المشترك والمولد أولاً", Toast.LENGTH_SHORT).show()
-                        return@onConfirm
-                    }
-                    val amp = amperes.toDoubleOrNull() ?: 0.0
-                    val price = pricePerAmpere.toDoubleOrNull() ?: 0.0
+                    } else {
+                        val amp = amperes.toDoubleOrNull() ?: 0.0
+                        val price = pricePerAmpere.toDoubleOrNull() ?: 0.0
 
-                    // يحفظ الفاتورة فعليًا في قاعدة البيانات (مرتبطة بالمشترك)
-                    // حتى تشتغل عليها لاحقًا: كشف الحساب، تقرير الأرباح، حالة الدفع، والمتأخرين بالدفع.
-                    viewModel.createInvoice(
-                        subscriberId = subscriber.id,
-                        subscriberName = subscriber.name,
-                        generatorName = generator.name,
-                        amperes = amp,
-                        pricePerAmpere = price,
-                        note = note
-                    ) { invoice ->
-                        currentReceipt = ReceiptData(
-                            subscriberName = invoice.subscriberName,
-                            generatorName = invoice.generatorName,
-                            amperes = invoice.amperes,
-                            pricePerAmpere = invoice.pricePerAmpere,
-                            amount = invoice.amount,
-                            dateMillis = invoice.date,
-                            note = invoice.note,
-                            logo = LogoManager.loadLogo(context)
-                        )
+                        // يحفظ الفاتورة فعليًا في قاعدة البيانات (مرتبطة بالمشترك)
+                        // حتى تشتغل عليها لاحقًا: كشف الحساب، تقرير الأرباح، حالة الدفع، والمتأخرين بالدفع.
+                        viewModel.createInvoice(
+                            subscriberId = subscriber.id,
+                            subscriberName = subscriber.name,
+                            generatorName = generator.name,
+                            amperes = amp,
+                            pricePerAmpere = price,
+                            note = note
+                        ) { invoice ->
+                            currentReceipt = ReceiptData(
+                                subscriberName = invoice.subscriberName,
+                                generatorName = invoice.generatorName,
+                                amperes = invoice.amperes,
+                                pricePerAmpere = invoice.pricePerAmpere,
+                                amount = invoice.amount,
+                                dateMillis = invoice.date,
+                                note = invoice.note,
+                                logo = LogoManager.loadLogo(context)
+                            )
+                        }
                     }
                 } else {
                     pinError = "رمز PIN غير صحيح، حاول مرة أخرى"
