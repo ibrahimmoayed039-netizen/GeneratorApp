@@ -12,7 +12,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.TrendingUp
-import androidx.compose.material.icons.filled.PriceCheck
+import androidx.compose.material.icons.filled.AttachMoney
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -45,7 +45,7 @@ fun HomeScreen(
             HomeCard("المشتركون", Icons.Filled.People, onOpenSubscribers)
             HomeCard("المولدات", Icons.Filled.Bolt, onOpenGenerators)
             HomeCard("الفواتير والطباعة", Icons.Filled.Receipt, onOpenBilling)
-            HomeCard("حالة الدفع الشهرية", Icons.Filled.PriceCheck, onOpenPaymentStatus)
+            HomeCard("حالة الدفع الشهرية", Icons.Filled.AttachMoney, onOpenPaymentStatus)
             HomeCard("كشف حساب شهري", Icons.Filled.Description, onOpenStatement)
             HomeCard("المتأخرون بالدفع", Icons.Filled.Warning, onOpenLatePayments)
             HomeCard("المصروفات (ديزل/صيانة)", Icons.Filled.MoneyOff, onOpenExpenses)
