@@ -1,7 +1,5 @@
 package com.example.generatorapp.ui.screens
 
-import android.bluetooth.BluetoothAdapter
-import android.bluetooth.BluetoothDevice
 import android.widget.Toast
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -17,7 +15,9 @@ import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptData
 import com.example.generatorapp.printing.ReceiptPrintManager
+import com.example.generatorapp.printing.findFirstPairedThermalPrinter
 import com.example.generatorapp.security.PinManager
+import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.ui.components.PinDialog
 import com.example.generatorapp.ui.components.ReceiptPreview
 import com.example.generatorapp.viewmodel.MainViewModel
@@ -123,9 +123,22 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                         Toast.makeText(context, "اختر المشترك والمولد أولاً", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
-                    // قبل تسجيل أي دفعة، يجب على الموظف إدخال رمز PIN الصحيح أولاً
-                    pinError = null
-                    showPinDialog = true
+                    if (PinSession.unlocked) {
+                        // الجلسة مفتوحة أصلاً (تم إدخال الرمز سابقًا بنفس فتحة التطبيق) — سجّل الدفعة مباشرة
+                        createInvoiceAndBuildReceipt(
+                            viewModel = viewModel,
+                            context = context,
+                            subscriber = subscriber,
+                            generatorName = generator.name,
+                            amperesText = amperes,
+                            priceText = pricePerAmpere,
+                            note = note
+                        ) { receipt -> currentReceipt = receipt }
+                    } else {
+                        // أول مرة بهذه الجلسة — يجب إدخال رمز PIN
+                        pinError = null
+                        showPinDialog = true
+                    }
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("تسجيل دفعة (إنشاء وحفظ الوصل)") }
@@ -182,36 +195,22 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                 if (PinManager.verifyPin(context, enteredPin)) {
                     showPinDialog = false
                     pinError = null
+                    PinSession.unlock()
 
                     val subscriber = selectedSubscriber
                     val generator = selectedGenerator
                     if (subscriber == null || generator == null) {
                         Toast.makeText(context, "اختر المشترك والمولد أولاً", Toast.LENGTH_SHORT).show()
                     } else {
-                        val amp = amperes.toDoubleOrNull() ?: 0.0
-                        val price = pricePerAmpere.toDoubleOrNull() ?: 0.0
-
-                        // يحفظ الفاتورة فعليًا في قاعدة البيانات (مرتبطة بالمشترك)
-                        // حتى تشتغل عليها لاحقًا: كشف الحساب، تقرير الأرباح، حالة الدفع، والمتأخرين بالدفع.
-                        viewModel.createInvoice(
-                            subscriberId = subscriber.id,
-                            subscriberName = subscriber.name,
+                        createInvoiceAndBuildReceipt(
+                            viewModel = viewModel,
+                            context = context,
+                            subscriber = subscriber,
                             generatorName = generator.name,
-                            amperes = amp,
-                            pricePerAmpere = price,
+                            amperesText = amperes,
+                            priceText = pricePerAmpere,
                             note = note
-                        ) { invoice ->
-                            currentReceipt = ReceiptData(
-                                subscriberName = invoice.subscriberName,
-                                generatorName = invoice.generatorName,
-                                amperes = invoice.amperes,
-                                pricePerAmpere = invoice.pricePerAmpere,
-                                amount = invoice.amount,
-                                dateMillis = invoice.date,
-                                note = invoice.note,
-                                logo = LogoManager.loadLogo(context)
-                            )
-                        }
+                        ) { receipt -> currentReceipt = receipt }
                     }
                 } else {
                     pinError = "رمز PIN غير صحيح، حاول مرة أخرى"
@@ -262,12 +261,47 @@ fun <T> DropdownSelector(
 }
 
 /**
- * يبحث عن أول جهاز بلوتوث مقترن (Paired) لاستخدامه كطابعة حرارية.
- * في تطبيق فعلي يُفضّل عرض قائمة بكل الأجهزة المقترنة ليختار المستخدم منها.
+ * ينشئ فاتورة فعليًا بقاعدة البيانات ويبني منها بيانات الوصل (ReceiptData) الجاهزة
+ * للمعاينة والطباعة. دالة مشتركة تُستخدم من شاشة الفواتير وشاشة حالة الدفع الشهرية
+ * حتى لا يتكرر نفس المنطق مرتين.
  */
-@Suppress("MissingPermission")
-private fun findFirstPairedThermalPrinter(context: android.content.Context): BluetoothDevice? {
-    val adapter = BluetoothAdapter.getDefaultAdapter() ?: return null
-    if (!adapter.isEnabled) return null
-    return adapter.bondedDevices?.firstOrNull()
+fun createInvoiceAndBuildReceipt(
+    viewModel: MainViewModel,
+    context: android.content.Context,
+    subscriber: Subscriber,
+    generatorName: String,
+    amperesText: String,
+    priceText: String,
+    note: String,
+    onReceiptReady: (ReceiptData) -> Unit
+) {
+    val amp = amperesText.toDoubleOrNull() ?: 0.0
+    val price = priceText.toDoubleOrNull() ?: 0.0
+
+    viewModel.createInvoice(
+        subscriberId = subscriber.id,
+        subscriberName = subscriber.name,
+        generatorName = generatorName,
+        amperes = amp,
+        pricePerAmpere = price,
+        note = note
+    ) { invoice ->
+        onReceiptReady(
+            ReceiptData(
+                subscriberName = invoice.subscriberName,
+                generatorName = invoice.generatorName,
+                amperes = invoice.amperes,
+                pricePerAmpere = invoice.pricePerAmpere,
+                amount = invoice.amount,
+                dateMillis = invoice.date,
+                note = invoice.note,
+                logo = LogoManager.loadLogo(context)
+            )
+        )
+    }
 }
+
+/**
+ * يبحث عن أول جهاز بلوتوث مقترن (Paired) لاستخدامه كطابعة حرارية.
+ * (الدالة موجودة الآن بشكل مشترك في printing/BluetoothPrinterUtils.kt)
+ */

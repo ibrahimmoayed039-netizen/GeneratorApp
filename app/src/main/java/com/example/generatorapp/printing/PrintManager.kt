@@ -32,6 +32,17 @@ object ReceiptPrintManager {
         EscPosPrinter(paperWidthChars).printReceipt(device, receipt)
     }
 
+    /**
+     * يطبع صفحة اختبار جداول الحروف (CP0 - CP47 و CP255) على الطابعة الحرارية
+     * لمساعدتك على تحديد رقم جدول الحروف الصحيح لدعم اللغة العربية على طابعتك.
+     */
+    suspend fun printCharsetTestPage(
+        device: BluetoothDevice,
+        paperWidthChars: Int = 32 // استخدم 48 لعرض 80مم
+    ) {
+        EscPosPrinter(paperWidthChars).printCharsetTestPage(device)
+    }
+
     fun printStatement(
         context: Context,
         subscriberName: String,

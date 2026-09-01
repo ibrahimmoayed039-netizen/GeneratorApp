@@ -34,6 +34,13 @@ data class ProfitSummary(
     val netProfit: Double
 )
 
+/** تفاصيل كاملة لتقرير الأرباح (تُستخدم لتصدير PDF مفصّل بالفواتير والمصروفات) */
+data class ProfitReportDetails(
+    val summary: ProfitSummary,
+    val invoices: List<Invoice>,
+    val expenses: List<Expense>
+)
+
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = AppRepository(AppDatabase.getInstance(application))
@@ -43,11 +50,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val invoices = repository.invoices
     val expenses = repository.expenses
 
-    fun addSubscriber(name: String, phone: String, address: String, meterNumber: String) {
+    fun addSubscriber(name: String, phone: String, address: String, meterNumber: String, area: String = "") {
         viewModelScope.launch {
             repository.addSubscriber(
-                Subscriber(name = name, phone = phone, address = address, meterNumber = meterNumber)
+                Subscriber(name = name, phone = phone, address = address, meterNumber = meterNumber, area = area)
             )
+        }
+    }
+
+    /** يحدّث بيانات مشترك موجود (الاسم أو الهاتف أو العنوان أو رقم العداد) */
+    fun updateSubscriber(subscriber: Subscriber) {
+        viewModelScope.launch {
+            repository.updateSubscriber(subscriber)
         }
     }
 
@@ -209,6 +223,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val revenue = repository.invoicesBetween(start, end).first().sumOf { it.amount }
             val cost = repository.expensesBetween(start, end).first().sumOf { it.amount }
             onResult(ProfitSummary(revenue, cost, revenue - cost))
+        }
+    }
+
+    /** نفس تقرير الأرباح لكن مع قوائم الفواتير والمصروفات كاملة (لتصدير PDF مفصّل) */
+    fun loadProfitReportDetails(year: Int, month: Int?, onResult: (ProfitReportDetails) -> Unit) {
+        viewModelScope.launch {
+            val (start, end) = if (month != null) {
+                DateUtils.monthRange(year, month)
+            } else {
+                DateUtils.yearRange(year)
+            }
+            val invoicesList = repository.invoicesBetween(start, end).first()
+            val expensesList = repository.expensesBetween(start, end).first()
+            val revenue = invoicesList.sumOf { it.amount }
+            val cost = expensesList.sumOf { it.amount }
+            onResult(ProfitReportDetails(ProfitSummary(revenue, cost, revenue - cost), invoicesList, expensesList))
         }
     }
 }

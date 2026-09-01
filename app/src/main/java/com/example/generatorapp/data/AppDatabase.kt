@@ -23,7 +23,7 @@ import com.example.generatorapp.data.entities.Subscription
  */
 @Database(
     entities = [Subscriber::class, Generator::class, Subscription::class, Invoice::class, Expense::class, AmpereChangeLog::class],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -52,6 +52,18 @@ abstract class AppDatabase : RoomDatabase() {
                     .build()
                 INSTANCE = instance
                 instance
+            }
+        }
+
+        /**
+         * يغلق الاتصال الحالي بقاعدة البيانات ويصفّر الـ instance المخزّن.
+         * ضروري قبل استبدال ملف قاعدة البيانات بنسخة احتياطية (استعادة)، وإلا Room
+         * يبقى يكتب على نسخة قديمة من الملف مفتوحة بالذاكرة.
+         */
+        fun closeInstance() {
+            synchronized(this) {
+                INSTANCE?.close()
+                INSTANCE = null
             }
         }
     }

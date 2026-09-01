@@ -33,6 +33,9 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
         private val BOLD_OFF = byteArrayOf(0x1B, 0x45, 0x00)
         private val CUT_PAPER = byteArrayOf(0x1D, 0x56, 0x00)
         private val LINE_FEED = byteArrayOf(0x0A)
+
+        /** جملة عربية قصيرة تُستخدم في صفحة اختبار جداول الحروف */
+        private const val CHARSET_TEST_SENTENCE = "بسم الله الرحمن الرحيم"
     }
 
     /**
@@ -57,6 +60,67 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
                 }
             }
         }
+    }
+
+    /**
+     * يتصل بالطابعة الحرارية ويطبع صفحة اختبار جداول الحروف (Code Pages):
+     * نفس الجملة العربية تُطبع مكرّرة أسفل كل رقم جدول حروف من CP0 إلى CP47، بالإضافة إلى CP255،
+     * لمساعدتك على تحديد رقم الجدول (codePage) الذي يعرض العربية بشكل صحيح على طابعتك المحددة.
+     * استخدم الرقم الذي تظهر أسفله الجملة سليمة كقيمة codePage عند إنشاء EscPosCharsetEncoding.
+     */
+    @SuppressLint("MissingPermission")
+    suspend fun printCharsetTestPage(device: BluetoothDevice) {
+        withContext(Dispatchers.IO) {
+            var socket: BluetoothSocket? = null
+            try {
+                socket = device.createRfcommSocketToServiceRecord(SPP_UUID)
+                socket.connect()
+                writeCharsetTestPage(socket.outputStream)
+            } catch (e: IOException) {
+                throw IOException("تعذّر الاتصال بالطابعة الحرارية: ${e.message}")
+            } finally {
+                try {
+                    socket?.close()
+                } catch (_: IOException) {
+                }
+            }
+        }
+    }
+
+    private fun writeCharsetTestPage(output: OutputStream) {
+        output.write(INIT)
+        output.write(ALIGN_CENTER)
+        output.write(BOLD_ON)
+        output.write("اختبار جداول الحروف".toByteArray(charset("windows-1256")))
+        output.write(BOLD_OFF)
+        output.write(LINE_FEED)
+        output.write("=".repeat(paperWidthChars).toByteArray(Charsets.US_ASCII))
+        output.write(LINE_FEED)
+        output.write(ALIGN_RIGHT)
+
+        // نرمّز الجملة العربية مرة واحدة بترميز Windows-1256 (الأكثر شيوعًا في طابعات ESC/POS)؛
+        // البايتات نفسها تُرسل تحت كل رقم جدول حروف، والطابعة هي من تفسّرها بشكل مختلف حسب
+        // الجدول المفعّل، لذلك يظهر النص سليمًا فقط تحت الرقم المطابق فعليًا لتلك الطابعة.
+        val arabicBytes = try {
+            CHARSET_TEST_SENTENCE.toByteArray(charset("windows-1256"))
+        } catch (e: Exception) {
+            CHARSET_TEST_SENTENCE.toByteArray(Charsets.UTF_8)
+        }
+
+        val codePagesToTest = (0..47).toList() + listOf(255)
+        for (cp in codePagesToTest) {
+            // "CP<رقم>: " بأحرف/أرقام إنجليزية (ASCII) تبقى صحيحة بأي جدول حروف
+            output.write("CP$cp: ".toByteArray(Charsets.US_ASCII))
+            output.write(byteArrayOf(0x1B, 0x74, cp.toByte())) // ESC t n — اختيار جدول الحروف
+            output.write(arabicBytes)
+            output.write(LINE_FEED)
+        }
+
+        output.write(ALIGN_CENTER)
+        output.write(LINE_FEED)
+        output.write(LINE_FEED)
+        output.write(CUT_PAPER)
+        output.flush()
     }
 
     private fun writeReceipt(output: OutputStream, receipt: ReceiptData) {

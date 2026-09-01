@@ -13,5 +13,7 @@ data class Subscriber(
     val name: String,
     val phone: String,
     val address: String,
-    val meterNumber: String
+    val meterNumber: String,
+    /** المنطقة أو الحي — تُستخدم لتصنيف المشتركين وتسهيل التحصيل الميداني */
+    val area: String = ""
 )

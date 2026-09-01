@@ -11,6 +11,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.Invoice
 import com.example.generatorapp.data.entities.Subscriber
+import com.example.generatorapp.printing.PdfReportGenerator
 import com.example.generatorapp.printing.ReceiptPrintManager
 import com.example.generatorapp.util.DateUtils
 import com.example.generatorapp.viewmodel.MainViewModel
@@ -115,6 +116,20 @@ fun StatementScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) 
                         },
                         modifier = Modifier.fillMaxWidth()
                     ) { Text("طباعة كشف الحساب") }
+
+                    OutlinedButton(
+                        onClick = {
+                            val file = PdfReportGenerator.generateStatementPdf(
+                                context = context,
+                                subscriberName = selectedSubscriber?.name ?: "",
+                                periodLabel = "${DateUtils.monthName(selectedMonth)} $selectedYear",
+                                invoices = list,
+                                total = total
+                            )
+                            PdfReportGenerator.openOrShare(context, file)
+                        },
+                        modifier = Modifier.fillMaxWidth()
+                    ) { Text("تصدير PDF") }
                 }
             }
         }

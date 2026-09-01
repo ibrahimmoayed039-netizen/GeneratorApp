@@ -4,27 +4,30 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.generatorapp.printing.PdfReportGenerator
 import com.example.generatorapp.util.DateUtils
 import com.example.generatorapp.viewmodel.MainViewModel
-import com.example.generatorapp.viewmodel.ProfitSummary
+import com.example.generatorapp.viewmodel.ProfitReportDetails
 
 private enum class ReportMode { MONTHLY, YEARLY }
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ProfitReportScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
+    val context = LocalContext.current
     var mode by remember { mutableStateOf(ReportMode.MONTHLY) }
     var selectedMonth by remember { mutableStateOf(DateUtils.currentMonth()) }
     var selectedYear by remember { mutableStateOf(DateUtils.currentYear()) }
-    var summary by remember { mutableStateOf<ProfitSummary?>(null) }
+    var details by remember { mutableStateOf<ProfitReportDetails?>(null) }
 
     fun refresh() {
-        viewModel.loadProfitSummary(
+        viewModel.loadProfitReportDetails(
             year = selectedYear,
             month = if (mode == ReportMode.MONTHLY) selectedMonth else null
-        ) { summary = it }
+        ) { details = it }
     }
 
     LaunchedEffect(mode, selectedMonth, selectedYear) { refresh() }
@@ -71,7 +74,8 @@ fun ProfitReportScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Uni
                 modifier = Modifier.fillMaxWidth()
             )
 
-            summary?.let { s ->
+            details?.let { d ->
+                val s = d.summary
                 SummaryCard(
                     title = "إجمالي الإيرادات",
                     value = s.totalRevenue,
@@ -88,6 +92,24 @@ fun ProfitReportScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Uni
                     color = if (s.netProfit >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
                     emphasized = true
                 )
+
+                OutlinedButton(
+                    onClick = {
+                        val periodLabel = if (mode == ReportMode.MONTHLY)
+                            "${DateUtils.monthName(selectedMonth)} $selectedYear"
+                        else
+                            "سنة $selectedYear"
+                        val file = PdfReportGenerator.generateProfitReportPdf(
+                            context = context,
+                            periodLabel = periodLabel,
+                            summary = d.summary,
+                            invoices = d.invoices,
+                            expenses = d.expenses
+                        )
+                        PdfReportGenerator.openOrShare(context, file)
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("تصدير PDF") }
             }
         }
     }

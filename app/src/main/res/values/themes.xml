@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!--
+        ثيم مخصص للتطبيق بنفس ألوان معاينة HTML وثيم Compose (petrol/amber)،
+        بدل الاعتماد على ألوان مكتبة Material3 الافتراضية (الموف) لعناصر
+        النظام مثل شريط الحالة (status bar) وشريط التنقل (navigation bar).
+    -->
+    <style name="Theme.GeneratorApp" parent="Theme.Material3.DayNight.NoActionBar">
+        <item name="colorPrimary">@color/petrol_primary</item>
+        <item name="colorPrimaryVariant">@color/petrol_dark</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorSecondary">@color/amber_accent</item>
+        <item name="colorSecondaryVariant">@color/amber_accent_dark</item>
+        <item name="colorOnSecondary">#2A1D06</item>
+
+        <!-- شريط الحالة العلوي وشريط التنقل السفلي -->
+        <item name="android:statusBarColor" tools:targetApi="21">@color/petrol_primary</item>
+        <item name="android:navigationBarColor" tools:targetApi="21">@color/petrol_dark</item>
+        <!-- أيقونات فاتحة (بيضاء) لأن خلفية الشريط داكنة -->
+        <item name="android:windowLightStatusBar" tools:targetApi="23">false</item>
+
+        <item name="android:windowBackground">@color/background_light</item>
+    </style>
+</resources>

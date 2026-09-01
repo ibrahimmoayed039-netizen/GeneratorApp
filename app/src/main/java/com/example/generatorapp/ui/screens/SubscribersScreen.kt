@@ -1,6 +1,7 @@
 package com.example.generatorapp.ui.screens
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -8,29 +9,34 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.data.entities.Subscription
+import com.example.generatorapp.printing.PdfReportGenerator
 import com.example.generatorapp.util.DateUtils
 import com.example.generatorapp.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
+    val context = LocalContext.current
     val subscribers by viewModel.subscribers.collectAsState(initial = emptyList())
 
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
     var address by remember { mutableStateOf("") }
     var meter by remember { mutableStateOf("") }
+    var area by remember { mutableStateOf("") }
     var showDialog by remember { mutableStateOf(false) }
 
     // المشترك المختار حاليًا لعرض تفاصيله وإدارة اشتراكاته
@@ -38,15 +44,21 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
 
     // نص البحث بالاسم أو رقم العداد
     var searchQuery by remember { mutableStateOf("") }
-    val filteredSubscribers = remember(subscribers, searchQuery) {
-        if (searchQuery.isBlank()) {
-            subscribers
-        } else {
-            subscribers.filter {
-                it.name.contains(searchQuery, ignoreCase = true) ||
+
+    // قائمة المناطق الموجودة فعليًا لدى المشتركين (لأغراض الفلترة)
+    val areas = remember(subscribers) {
+        subscribers.map { it.area }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    var selectedAreaFilter by remember { mutableStateOf<String?>(null) }
+
+    val filteredSubscribers = remember(subscribers, searchQuery, selectedAreaFilter) {
+        subscribers
+            .filter { selectedAreaFilter == null || it.area == selectedAreaFilter }
+            .filter {
+                searchQuery.isBlank() ||
+                    it.name.contains(searchQuery, ignoreCase = true) ||
                     it.meterNumber.contains(searchQuery, ignoreCase = true)
             }
-        }
     }
 
     Scaffold(
@@ -55,6 +67,12 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
                 title = { Text("المشتركون") },
                 navigationIcon = {
                     TextButton(onClick = onBack) { Text("رجوع") }
+                },
+                actions = {
+                    TextButton(onClick = {
+                        val file = PdfReportGenerator.generateSubscribersListPdf(context, filteredSubscribers)
+                        PdfReportGenerator.openOrShare(context, file)
+                    }) { Text("تصدير PDF") }
                 }
             )
         },
@@ -78,6 +96,30 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
+            if (areas.isNotEmpty()) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 16.dp),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = selectedAreaFilter == null,
+                        onClick = { selectedAreaFilter = null },
+                        label = { Text("كل المناطق") }
+                    )
+                    areas.forEach { a ->
+                        FilterChip(
+                            selected = selectedAreaFilter == a,
+                            onClick = { selectedAreaFilter = if (selectedAreaFilter == a) null else a },
+                            label = { Text(a) }
+                        )
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+            }
+
             if (filteredSubscribers.isEmpty()) {
                 Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Text(
@@ -90,7 +132,12 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
                     items(filteredSubscribers) { subscriber ->
                         ListItem(
                             headlineContent = { Text(subscriber.name) },
-                            supportingContent = { Text("${subscriber.phone} - عداد: ${subscriber.meterNumber}") },
+                            supportingContent = {
+                                Text(
+                                    "${subscriber.phone} - عداد: ${subscriber.meterNumber}" +
+                                        if (subscriber.area.isNotBlank()) " - ${subscriber.area}" else ""
+                                )
+                            },
                             modifier = Modifier.clickable { selectedSubscriber = subscriber }
                         )
                         Divider()
@@ -110,13 +157,18 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
                     OutlinedTextField(value = phone, onValueChange = { phone = it }, label = { Text("الهاتف") })
                     OutlinedTextField(value = address, onValueChange = { address = it }, label = { Text("العنوان") })
                     OutlinedTextField(value = meter, onValueChange = { meter = it }, label = { Text("رقم العداد") })
+                    OutlinedTextField(
+                        value = area, onValueChange = { area = it },
+                        label = { Text("المنطقة / الحي") },
+                        supportingText = { Text("تُستخدم لتصنيف المشتركين وتسهيل التحصيل الميداني") }
+                    )
                 }
             },
             confirmButton = {
                 TextButton(onClick = {
                     if (name.isNotBlank()) {
-                        viewModel.addSubscriber(name, phone, address, meter)
-                        name = ""; phone = ""; address = ""; meter = ""
+                        viewModel.addSubscriber(name, phone, address, meter, area.trim())
+                        name = ""; phone = ""; address = ""; meter = ""; area = ""
                         showDialog = false
                     }
                 }) { Text("حفظ") }
@@ -148,15 +200,30 @@ private fun SubscriberDetailDialog(
     onDismiss: () -> Unit
 ) {
     val generators by viewModel.generators.collectAsState(initial = emptyList())
+    val allSubscribers by viewModel.subscribers.collectAsState(initial = listOf(subscriber))
+    // نأخذ أحدث نسخة من بيانات المشترك (بعد أي تعديل) بدل الاعتماد على النسخة القديمة الممرَّرة
+    val currentSubscriber = allSubscribers.firstOrNull { it.id == subscriber.id } ?: subscriber
     val subscriptions by viewModel.subscriptionsForSubscriber(subscriber.id).collectAsState(initial = emptyList())
 
     var showAddSubscription by remember { mutableStateOf(false) }
     var editingSubscription by remember { mutableStateOf<Subscription?>(null) }
     var showHistory by remember { mutableStateOf(false) }
+    var showEditSubscriber by remember { mutableStateOf(false) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text(subscriber.name) },
+        title = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(currentSubscriber.name)
+                IconButton(onClick = { showEditSubscriber = true }) {
+                    Icon(Icons.Default.Edit, contentDescription = "تعديل بيانات المشترك")
+                }
+            }
+        },
         text = {
             Column(
                 modifier = Modifier
@@ -164,7 +231,7 @@ private fun SubscriberDetailDialog(
                     .verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                Text("${subscriber.phone} - عداد: ${subscriber.meterNumber}", style = MaterialTheme.typography.bodySmall)
+                Text("${currentSubscriber.phone} - عداد: ${currentSubscriber.meterNumber}", style = MaterialTheme.typography.bodySmall)
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -234,6 +301,25 @@ private fun SubscriberDetailDialog(
             onDismiss = { showHistory = false }
         )
     }
+
+    if (showEditSubscriber) {
+        EditSubscriberDialog(
+            subscriber = currentSubscriber,
+            onDismiss = { showEditSubscriber = false },
+            onConfirm = { name, phone, address, meter, area ->
+                viewModel.updateSubscriber(
+                    currentSubscriber.copy(
+                        name = name,
+                        phone = phone,
+                        address = address,
+                        meterNumber = meter,
+                        area = area
+                    )
+                )
+                showEditSubscriber = false
+            }
+        )
+    }
 }
 
 /** صف يعرض اشتراك واحد مع زر تفعيل/تعليق وزر تعديل الأمبير (بدل أي زر حذف نهائي) */
@@ -284,6 +370,60 @@ private fun SubscriptionRow(
             }
         }
     }
+}
+
+/** حوار تعديل بيانات المشترك (الاسم، الهاتف، العنوان، رقم العداد) */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun EditSubscriberDialog(
+    subscriber: Subscriber,
+    onDismiss: () -> Unit,
+    onConfirm: (name: String, phone: String, address: String, meter: String, area: String) -> Unit
+) {
+    var name by remember { mutableStateOf(subscriber.name) }
+    var phone by remember { mutableStateOf(subscriber.phone) }
+    var address by remember { mutableStateOf(subscriber.address) }
+    var meter by remember { mutableStateOf(subscriber.meterNumber) }
+    var area by remember { mutableStateOf(subscriber.area) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تعديل بيانات المشترك") },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                OutlinedTextField(
+                    value = name, onValueChange = { name = it },
+                    label = { Text("الاسم") }, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = phone, onValueChange = { phone = it },
+                    label = { Text("الهاتف") }, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = address, onValueChange = { address = it },
+                    label = { Text("العنوان") }, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = meter, onValueChange = { meter = it },
+                    label = { Text("رقم العداد") }, modifier = Modifier.fillMaxWidth()
+                )
+                OutlinedTextField(
+                    value = area, onValueChange = { area = it },
+                    label = { Text("المنطقة / الحي") }, modifier = Modifier.fillMaxWidth()
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = {
+                if (name.isNotBlank()) {
+                    onConfirm(name.trim(), phone.trim(), address.trim(), meter.trim(), area.trim())
+                }
+            }) { Text("حفظ") }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إلغاء") }
+        }
+    )
 }
 
 /** حوار اختيار مولد وإدخال أمبيرات لإنشاء اشتراك جديد لمشترك */

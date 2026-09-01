@@ -15,7 +15,7 @@
         android:icon="@drawable/ic_launcher_foreground"
         android:label="@string/app_name"
         android:supportsRtl="true"
-        android:theme="@style/Theme.Material3.DayNight.NoActionBar"
+        android:theme="@style/Theme.GeneratorApp"
         tools:targetApi="34">
 
         <activity
@@ -27,5 +27,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
         </activity>
+
+        <!-- يلزم لمشاركة ملف النسخة الاحتياطية مع تطبيقات أخرى (واتساب، بريد، درايف...) -->
+        <provider
+            android:name="androidx.core.content.FileProvider"
+            android:authorities="${applicationId}.fileprovider"
+            android:exported="false"
+            android:grantUriPermissions="true">
+            <meta-data
+                android:name="android.support.FILE_PROVIDER_PATHS"
+                android:resource="@xml/file_paths" />
+        </provider>
     </application>
 </manifest>
