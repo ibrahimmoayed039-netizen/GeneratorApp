@@ -14,6 +14,7 @@ import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.TrendingUp
 import androidx.compose.material.icons.filled.AttachMoney
+import androidx.compose.material.icons.filled.Sms
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
@@ -32,7 +33,8 @@ fun HomeScreen(
     onOpenExpenses: () -> Unit,
     onOpenProfitReport: () -> Unit,
     onOpenPaymentStatus: () -> Unit,
-    onOpenMaintenanceAlerts: () -> Unit
+    onOpenMaintenanceAlerts: () -> Unit,
+    onOpenReminders: () -> Unit
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("مدير المولدات") }) }
@@ -52,6 +54,7 @@ fun HomeScreen(
             HomeCard("حالة الدفع الشهرية", Icons.Filled.AttachMoney, onOpenPaymentStatus)
             HomeCard("كشف حساب شهري", Icons.Filled.Description, onOpenStatement)
             HomeCard("المتأخرون بالدفع", Icons.Filled.Warning, onOpenLatePayments)
+            HomeCard("رسائل وتذكيرات (واتساب/SMS)", Icons.Filled.Sms, onOpenReminders)
             HomeCard("المصروفات (ديزل/صيانة)", Icons.Filled.MoneyOff, onOpenExpenses)
             HomeCard("تقرير الأرباح", Icons.Filled.TrendingUp, onOpenProfitReport)
             HomeCard("إعدادات المحل (الشعار)", Icons.Filled.Settings, onOpenSettings)

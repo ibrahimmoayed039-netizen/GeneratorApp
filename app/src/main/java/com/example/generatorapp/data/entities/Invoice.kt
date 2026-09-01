@@ -29,5 +29,11 @@ data class Invoice(
     val amount: Double,
     val date: Long,
     val paid: Boolean = true,
-    val note: String = ""
+    val note: String = "",
+    /** نوع المشترك وقت إصدار الفاتورة (منزلي/تجاري) — يُحفظ هنا حتى لو تغيّر نوعه لاحقًا */
+    val subscriberType: String = "",
+    /** سعر تكلفة الأمبير وقت إصدار الفاتورة (لحساب الربح لاحقًا حتى لو تغيّرت التكلفة بالمستقبل) */
+    val costPricePerAmpere: Double = 0.0,
+    /** الربح الصافي لهذه الفاتورة = المبلغ - (سعر التكلفة × عدد الأمبيرات) */
+    val profit: Double = 0.0
 )

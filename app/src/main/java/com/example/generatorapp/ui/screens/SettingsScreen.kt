@@ -36,6 +36,7 @@ import com.example.generatorapp.backup.BackupManager
 import com.example.generatorapp.backup.BackupWorker
 import com.example.generatorapp.notifications.LatePaymentWorker
 import com.example.generatorapp.notifications.MaintenanceCheckWorker
+import com.example.generatorapp.notifications.MessageSettings
 import com.example.generatorapp.notifications.NotificationHelper
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptPrintManager
@@ -60,6 +61,26 @@ fun SettingsScreen(onBack: () -> Unit) {
     var message by remember { mutableStateOf<String?>(null) }
     var notificationsEnabled by remember { mutableStateOf(false) }
     var maintenanceNotificationsEnabled by remember { mutableStateOf(false) }
+
+    // ---------- رسائل التذكير (واتساب/SMS) ----------
+    var smsFeatureEnabled by remember { mutableStateOf(MessageSettings.isSmsFeatureEnabled(context)) }
+    var autoSmsEnabled by remember { mutableStateOf(MessageSettings.isAutoSmsEnabled(context)) }
+    var lateTemplate by remember { mutableStateOf(MessageSettings.getLateTemplate(context)) }
+    var priceTemplate by remember { mutableStateOf(MessageSettings.getPriceTemplate(context)) }
+    var countryCode by remember { mutableStateOf(MessageSettings.getCountryCode(context)) }
+    var messagingSettingsSaved by remember { mutableStateOf<String?>(null) }
+
+    val requestSmsPermissionForAuto = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            MessageSettings.setAutoSmsEnabled(context, true)
+            autoSmsEnabled = true
+            messagingSettingsSaved = "تم تفعيل الإرسال التلقائي بـ SMS للمتأخرين"
+        } else {
+            messagingSettingsSaved = "لازم تسمح بصلاحية الرسائل النصية (SMS) لتفعيل هذه الميزة"
+        }
+    }
 
     // نتحقق من الحالة الفعلية لمهمة تنبيهات الصيانة المجدولة عند فتح الشاشة
     LaunchedEffect(Unit) {
@@ -328,6 +349,132 @@ fun SettingsScreen(onBack: () -> Unit) {
                         }
                     }
                 )
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("رسائل تذكير المتأخرين وسعر الأمبير (واتساب/SMS)", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "واتساب متاح دائمًا (يفتح المحادثة برسالة جاهزة). ميزة SMS اختيارية بالكامل " +
+                    "ومعطّلة افتراضيًا — فعّلها فقط إذا تريد إرسال رسائل نصية فعلية عبر شريحة الاتصال.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("تفعيل ميزة SMS")
+                    Text(
+                        "إذا معطّلة: تختفي كل أزرار SMS من التطبيق ولا يُطلب أي إذن رسائل نصية",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = smsFeatureEnabled,
+                    onCheckedChange = { checked ->
+                        MessageSettings.setSmsFeatureEnabled(context, checked)
+                        smsFeatureEnabled = checked
+                        if (!checked) autoSmsEnabled = false
+                        messagingSettingsSaved =
+                            if (checked) "تم تفعيل ميزة SMS" else "تم تعطيل ميزة SMS بالكامل"
+                    }
+                )
+            }
+
+            Text(
+                "عدّل نص الرسائل حسب أسلوبك، فيها متغيرات تُستبدل تلقائيًا: {name} اسم المشترك، " +
+                    "{month} الشهر الحالي، {price} سعر الأمبير، {generator} اسم المولدة، {type} نوع الاشتراك. " +
+                    "الإرسال والتحكم بالقوائم من شاشة \"رسائل وتذكيرات\" بالصفحة الرئيسية.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = lateTemplate,
+                onValueChange = { lateTemplate = it },
+                label = { Text("قالب رسالة تذكير المتأخرين") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+            OutlinedTextField(
+                value = priceTemplate,
+                onValueChange = { priceTemplate = it },
+                label = { Text("قالب رسالة سعر الأمبير الشهري") },
+                modifier = Modifier.fillMaxWidth(),
+                minLines = 3
+            )
+            OutlinedTextField(
+                value = countryCode,
+                onValueChange = { countryCode = it.filter { c -> c.isDigit() } },
+                label = { Text("رمز الدولة (بدون +) — لتطبيع الأرقام عند فتح واتساب، مثال: 964") },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            Button(
+                onClick = {
+                    MessageSettings.setLateTemplate(context, lateTemplate)
+                    MessageSettings.setPriceTemplate(context, priceTemplate)
+                    MessageSettings.setCountryCode(context, countryCode)
+                    messagingSettingsSaved = "تم حفظ إعدادات الرسائل"
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("حفظ إعدادات الرسائل") }
+
+            if (smsFeatureEnabled) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("إرسال SMS تلقائي يوميًا للمتأخرين")
+                        Text(
+                            "يرسل رسالة SMS فعلية (بدون فتح أي تطبيق) لكل مشترك متأخر عند الفحص اليومي",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(
+                        checked = autoSmsEnabled,
+                        onCheckedChange = { checked ->
+                            if (checked) {
+                                val needsPermission = ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.SEND_SMS
+                                ) != PackageManager.PERMISSION_GRANTED
+
+                                if (needsPermission) {
+                                    requestSmsPermissionForAuto.launch(Manifest.permission.SEND_SMS)
+                                } else {
+                                    MessageSettings.setAutoSmsEnabled(context, true)
+                                    autoSmsEnabled = true
+                                    messagingSettingsSaved = "تم تفعيل الإرسال التلقائي بـ SMS للمتأخرين"
+                                }
+                            } else {
+                                MessageSettings.setAutoSmsEnabled(context, false)
+                                autoSmsEnabled = false
+                                messagingSettingsSaved = "تم إيقاف الإرسال التلقائي بـ SMS"
+                            }
+                        }
+                    )
+                }
+            }
+
+            Text(
+                "ملاحظة: واتساب لا يسمح بإرسال تلقائي كامل دون فتح التطبيق وضغط زر الإرسال يدويًا " +
+                    "(قيد من واتساب نفسه)، لذلك الإرسال التلقائي بالخلفية متاح فقط عبر SMS (اختياري). " +
+                    "رسائل واتساب تُفتح جاهزة من شاشة \"رسائل وتذكيرات\" وتحتاج ضغطة إرسال واحدة لكل مشترك.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            messagingSettingsSaved?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary)
             }
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))

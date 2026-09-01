@@ -15,5 +15,7 @@ data class Subscriber(
     val address: String,
     val meterNumber: String,
     /** المنطقة أو الحي — تُستخدم لتصنيف المشتركين وتسهيل التحصيل الميداني */
-    val area: String = ""
+    val area: String = "",
+    /** نوع المشترك: منزلي أو تجاري — يحدد سعر بيع الأمبير المطبَّق عليه (انظر SubscriberType) */
+    val subscriberType: String = SubscriberType.RESIDENTIAL
 )

@@ -11,6 +11,7 @@ import com.example.generatorapp.data.entities.GeneratorHourLog
 import com.example.generatorapp.data.entities.Invoice
 import com.example.generatorapp.data.entities.MaintenanceItem
 import com.example.generatorapp.data.entities.Subscriber
+import com.example.generatorapp.data.entities.SubscriberType
 import com.example.generatorapp.data.entities.Subscription
 import com.example.generatorapp.repository.AppRepository
 import com.example.generatorapp.util.DateUtils
@@ -34,6 +35,13 @@ data class MaintenanceStatus(
 data class LateSubscriberInfo(
     val subscriber: Subscriber,
     val lastPaymentMillis: Long?
+)
+
+/** يمثل مشترك مع مولدته الحالية وسعر الأمبير المطبَّق عليه (لرسالة السعر الشهري) */
+data class SubscriberPriceInfo(
+    val subscriber: Subscriber,
+    val generator: Generator,
+    val pricePerAmpere: Double
 )
 
 /** يمثل حالة دفع مشترك لهذا الشهر: مدفوع (له فاتورة هذا الشهر) أو غير مدفوع */
@@ -66,10 +74,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val invoices = repository.invoices
     val expenses = repository.expenses
 
-    fun addSubscriber(name: String, phone: String, address: String, meterNumber: String, area: String = "") {
+    fun addSubscriber(
+        name: String,
+        phone: String,
+        address: String,
+        meterNumber: String,
+        area: String = "",
+        subscriberType: String = SubscriberType.RESIDENTIAL
+    ) {
         viewModelScope.launch {
             repository.addSubscriber(
-                Subscriber(name = name, phone = phone, address = address, meterNumber = meterNumber, area = area)
+                Subscriber(
+                    name = name,
+                    phone = phone,
+                    address = address,
+                    meterNumber = meterNumber,
+                    area = area,
+                    subscriberType = subscriberType
+                )
             )
         }
     }
@@ -81,13 +103,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun addGenerator(name: String, capacityKva: Double, pricePerAmpere: Double) {
+    fun addGenerator(
+        name: String,
+        capacityKva: Double,
+        costPricePerAmpere: Double,
+        residentialPricePerAmpere: Double,
+        commercialPricePerAmpere: Double
+    ) {
         viewModelScope.launch {
             repository.addGenerator(
-                Generator(name = name, capacityKva = capacityKva, pricePerAmpere = pricePerAmpere)
+                Generator(
+                    name = name,
+                    capacityKva = capacityKva,
+                    costPricePerAmpere = costPricePerAmpere,
+                    residentialPricePerAmpere = residentialPricePerAmpere,
+                    commercialPricePerAmpere = commercialPricePerAmpere
+                )
             )
         }
     }
+
+    /**
+     * يعدّل أسعار مولد موجود (تكلفة/بيع منزلي/بيع تجاري) — يُسجَّل التغيير بسجل الأسعار
+     * وينعكس فورًا على كل المشتركين المرتبطين بهذا المولد بأي فاتورة جديدة تُصدر لهم.
+     */
+    fun updateGeneratorPrices(
+        generator: Generator,
+        newCostPrice: Double,
+        newResidentialPrice: Double,
+        newCommercialPrice: Double,
+        note: String = ""
+    ) {
+        viewModelScope.launch {
+            repository.updateGeneratorPrices(generator, newCostPrice, newResidentialPrice, newCommercialPrice, note)
+        }
+    }
+
+    /** سجل تغييرات أسعار مولد معيّن */
+    fun priceLogsForGenerator(generatorId: Long) = repository.priceLogsForGenerator(generatorId)
 
     /** ينشئ فاتورة ويحفظها فعليًا بقاعدة البيانات (مرتبطة بمعرّف المشترك الحقيقي) */
     fun createInvoice(
@@ -97,10 +150,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         amperes: Double,
         pricePerAmpere: Double,
         note: String,
+        subscriberType: String = "",
+        costPricePerAmpere: Double = 0.0,
         onCreated: (Invoice) -> Unit
     ) {
         viewModelScope.launch {
             val amount = amperes * pricePerAmpere
+            val profit = amount - (amperes * costPricePerAmpere)
             val invoice = Invoice(
                 subscriberId = subscriberId,
                 subscriberName = subscriberName,
@@ -109,7 +165,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 pricePerAmpere = pricePerAmpere,
                 amount = amount,
                 date = System.currentTimeMillis(),
-                note = note
+                note = note,
+                subscriberType = subscriberType,
+                costPricePerAmpere = costPricePerAmpere,
+                profit = profit
             )
             repository.addInvoice(invoice)
             onCreated(invoice)
@@ -198,6 +257,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 LateSubscriberInfo(sub, lastPayments[sub.id]?.lastDate)
             }
             onResult(late)
+        }
+    }
+
+    // ---------- رسالة سعر الأمبير الشهري ----------
+
+    /**
+     * يرجع كل مشترك له اشتراك فعّال مع مولدته وسعر الأمبير المطبَّق عليه حسب نوعه
+     * (منزلي/تجاري)، تُستخدم لبناء رسالة السعر الشهري وإرسالها دفعة واحدة.
+     */
+    fun loadSubscriberPricingInfo(onResult: (List<SubscriberPriceInfo>) -> Unit) {
+        viewModelScope.launch {
+            val allSubscribers = repository.subscribers.first()
+            val result = mutableListOf<SubscriberPriceInfo>()
+            allSubscribers.forEach { sub ->
+                val activeSubscription = repository.subscriptionsForSubscriber(sub.id).first()
+                    .firstOrNull { it.active }
+                val generator = activeSubscription?.let { repository.getGenerator(it.generatorId) }
+                if (generator != null) {
+                    result.add(
+                        SubscriberPriceInfo(
+                            subscriber = sub,
+                            generator = generator,
+                            pricePerAmpere = generator.sellPriceFor(sub.subscriberType)
+                        )
+                    )
+                }
+            }
+            onResult(result)
         }
     }
 

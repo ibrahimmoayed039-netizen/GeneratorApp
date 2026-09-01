@@ -13,6 +13,7 @@ import com.example.generatorapp.data.dao.GeneratorDao
 import com.example.generatorapp.data.dao.GeneratorHourLogDao
 import com.example.generatorapp.data.dao.InvoiceDao
 import com.example.generatorapp.data.dao.MaintenanceItemDao
+import com.example.generatorapp.data.dao.PriceChangeLogDao
 import com.example.generatorapp.data.dao.SubscriberDao
 import com.example.generatorapp.data.dao.SubscriptionDao
 import com.example.generatorapp.data.entities.AmpereChangeLog
@@ -22,6 +23,7 @@ import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.GeneratorHourLog
 import com.example.generatorapp.data.entities.Invoice
 import com.example.generatorapp.data.entities.MaintenanceItem
+import com.example.generatorapp.data.entities.PriceChangeLog
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.data.entities.Subscription
 
@@ -33,9 +35,9 @@ import com.example.generatorapp.data.entities.Subscription
     entities = [
         Subscriber::class, Generator::class, Subscription::class, Invoice::class,
         Expense::class, AmpereChangeLog::class, GeneratorHourLog::class,
-        MaintenanceItem::class, FaultLog::class
+        MaintenanceItem::class, FaultLog::class, PriceChangeLog::class
     ],
-    version = 5,
+    version = 6,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -49,6 +51,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun generatorHourLogDao(): GeneratorHourLogDao
     abstract fun maintenanceItemDao(): MaintenanceItemDao
     abstract fun faultLogDao(): FaultLogDao
+    abstract fun priceChangeLogDao(): PriceChangeLogDao
 
     companion object {
         @Volatile
@@ -105,6 +108,45 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * يضيف: سعر تكلفة الأمبير وسعر بيع تجاري منفصل للمولد (سعر البيع المنزلي هو نفس
+         * عمود pricePerAmpere القديم)، ونوع المشترك (منزلي/تجاري) للمشترك، وحقول نوع
+         * المشترك/تكلفة الأمبير/الربح بالفاتورة، وجدول سجل تغييرات الأسعار.
+         * القيمة الافتراضية لسعر البيع التجاري تُنسخ من السعر القديم حتى لا تنقلب فواتير
+         * المشتركين الحاليين إلى صفر بعد الترقية مباشرة.
+         */
+        private val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE generators ADD COLUMN costPricePerAmpere REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE generators ADD COLUMN commercialPricePerAmpere REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("UPDATE generators SET commercialPricePerAmpere = pricePerAmpere")
+
+                db.execSQL("ALTER TABLE subscribers ADD COLUMN subscriberType TEXT NOT NULL DEFAULT 'منزلي'")
+
+                db.execSQL("ALTER TABLE invoices ADD COLUMN subscriberType TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE invoices ADD COLUMN costPricePerAmpere REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE invoices ADD COLUMN profit REAL NOT NULL DEFAULT 0.0")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS price_change_logs (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL,
+                        generatorId INTEGER NOT NULL,
+                        generatorName TEXT NOT NULL,
+                        oldCostPrice REAL NOT NULL,
+                        newCostPrice REAL NOT NULL,
+                        oldResidentialPrice REAL NOT NULL,
+                        newResidentialPrice REAL NOT NULL,
+                        oldCommercialPrice REAL NOT NULL,
+                        newCommercialPrice REAL NOT NULL,
+                        changeDate INTEGER NOT NULL,
+                        note TEXT NOT NULL DEFAULT ''
+                    )
+                    """.trimIndent()
+                )
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -112,7 +154,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "generator_app.db"
                 )
-                    .addMigrations(MIGRATION_4_5)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()
                     .build()

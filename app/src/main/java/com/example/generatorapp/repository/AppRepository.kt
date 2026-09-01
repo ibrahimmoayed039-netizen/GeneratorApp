@@ -9,6 +9,7 @@ import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.GeneratorHourLog
 import com.example.generatorapp.data.entities.Invoice
 import com.example.generatorapp.data.entities.MaintenanceItem
+import com.example.generatorapp.data.entities.PriceChangeLog
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.data.entities.Subscription
 import kotlinx.coroutines.flow.first
@@ -27,8 +28,52 @@ class AppRepository(private val db: AppDatabase) {
     // المولدات
     val generators = db.generatorDao().getAll()
     suspend fun addGenerator(generator: Generator) = db.generatorDao().insert(generator)
+    suspend fun getGenerator(id: Long): Generator? = db.generatorDao().getById(id)
     suspend fun updateGenerator(generator: Generator) = db.generatorDao().update(generator)
     suspend fun deleteGenerator(generator: Generator) = db.generatorDao().delete(generator)
+
+    /**
+     * يعدّل أسعار مولد (تكلفة الأمبير، بيع منزلي، بيع تجاري) ويسجّل التغيير بسجل الأسعار
+     * (فقط إن تغيّر أي منها فعلًا). بما أن كل الشاشات تقرأ من نفس تدفّق `generators`، فإن
+     * السعر الجديد ينعكس فورًا على كل المشتركين المرتبطين بهذا المولد عند إصدار أي فاتورة جديدة.
+     */
+    suspend fun updateGeneratorPrices(
+        generator: Generator,
+        newCostPrice: Double,
+        newResidentialPrice: Double,
+        newCommercialPrice: Double,
+        note: String = ""
+    ) {
+        val changed = newCostPrice != generator.costPricePerAmpere ||
+            newResidentialPrice != generator.residentialPricePerAmpere ||
+            newCommercialPrice != generator.commercialPricePerAmpere
+        if (changed) {
+            db.priceChangeLogDao().insert(
+                PriceChangeLog(
+                    generatorId = generator.id,
+                    generatorName = generator.name,
+                    oldCostPrice = generator.costPricePerAmpere,
+                    newCostPrice = newCostPrice,
+                    oldResidentialPrice = generator.residentialPricePerAmpere,
+                    newResidentialPrice = newResidentialPrice,
+                    oldCommercialPrice = generator.commercialPricePerAmpere,
+                    newCommercialPrice = newCommercialPrice,
+                    changeDate = System.currentTimeMillis(),
+                    note = note
+                )
+            )
+            db.generatorDao().update(
+                generator.copy(
+                    costPricePerAmpere = newCostPrice,
+                    residentialPricePerAmpere = newResidentialPrice,
+                    commercialPricePerAmpere = newCommercialPrice
+                )
+            )
+        }
+    }
+
+    /** سجل تغييرات أسعار مولد معيّن، من الأحدث للأقدم */
+    fun priceLogsForGenerator(generatorId: Long) = db.priceChangeLogDao().getForGenerator(generatorId)
 
     // الاشتراكات
     val activeSubscriptions = db.subscriptionDao().getActive()

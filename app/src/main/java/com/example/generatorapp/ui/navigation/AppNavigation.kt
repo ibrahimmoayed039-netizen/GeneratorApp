@@ -15,6 +15,7 @@ import com.example.generatorapp.ui.screens.LatePaymentsScreen
 import com.example.generatorapp.ui.screens.MaintenanceAlertsScreen
 import com.example.generatorapp.ui.screens.PaymentStatusScreen
 import com.example.generatorapp.ui.screens.ProfitReportScreen
+import com.example.generatorapp.ui.screens.RemindersScreen
 import com.example.generatorapp.ui.screens.SettingsScreen
 import com.example.generatorapp.ui.screens.StatementScreen
 import com.example.generatorapp.ui.screens.SubscribersScreen
@@ -32,6 +33,7 @@ object Routes {
     const val PROFIT_REPORT = "profit_report"
     const val PAYMENT_STATUS = "payment_status"
     const val MAINTENANCE_ALERTS = "maintenance_alerts"
+    const val REMINDERS = "reminders"
 
     fun generatorDetail(generatorId: Long) = "generator_detail/$generatorId"
 }
@@ -52,7 +54,8 @@ fun AppNavigation() {
                 onOpenExpenses = { navController.navigate(Routes.EXPENSES) },
                 onOpenProfitReport = { navController.navigate(Routes.PROFIT_REPORT) },
                 onOpenPaymentStatus = { navController.navigate(Routes.PAYMENT_STATUS) },
-                onOpenMaintenanceAlerts = { navController.navigate(Routes.MAINTENANCE_ALERTS) }
+                onOpenMaintenanceAlerts = { navController.navigate(Routes.MAINTENANCE_ALERTS) },
+                onOpenReminders = { navController.navigate(Routes.REMINDERS) }
             )
         }
         composable(Routes.SUBSCRIBERS) {
@@ -97,6 +100,9 @@ fun AppNavigation() {
                 onBack = { navController.popBackStack() },
                 onOpenGenerator = { id -> navController.navigate(Routes.generatorDetail(id)) }
             )
+        }
+        composable(Routes.REMINDERS) {
+            RemindersScreen(onBack = { navController.popBackStack() })
         }
     }
 }

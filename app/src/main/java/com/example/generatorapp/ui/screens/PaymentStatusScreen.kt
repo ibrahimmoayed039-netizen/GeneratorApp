@@ -179,7 +179,7 @@ private fun PaymentStatusRow(info: PaymentStatusInfo, onClick: () -> Unit) {
                     color = if (paid) MaterialTheme.colorScheme.onError else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
-                    "${info.subscriber.phone} - عداد: ${info.subscriber.meterNumber}" +
+                    "${info.subscriber.phone} - عداد: ${info.subscriber.meterNumber} - ${info.subscriber.subscriberType}" +
                         if (info.subscriber.area.isNotBlank()) " - ${info.subscriber.area}" else "",
                     style = MaterialTheme.typography.bodySmall,
                     color = if (paid)
@@ -242,7 +242,7 @@ private fun PaySubscriberDialog(
         selectedSubscription?.let { sub ->
             amperes = sub.amperes.toString()
             val gen = generators.firstOrNull { it.id == sub.generatorId }
-            if (gen != null) pricePerAmpere = gen.pricePerAmpere.toString()
+            if (gen != null) pricePerAmpere = gen.sellPriceFor(subscriber.subscriberType).toString()
         }
     }
 
@@ -379,7 +379,8 @@ private fun PaySubscriberDialog(
                                 generatorName = gen.name,
                                 amperesText = amperes,
                                 priceText = pricePerAmpere,
-                                note = note
+                                note = note,
+                                costPricePerAmpere = gen.costPricePerAmpere
                             ) { receipt ->
                                 currentReceipt = receipt
                                 onPaid()
@@ -422,7 +423,8 @@ private fun PaySubscriberDialog(
                             generatorName = gen.name,
                             amperesText = amperes,
                             priceText = pricePerAmpere,
-                            note = note
+                            note = note,
+                            costPricePerAmpere = gen.costPricePerAmpere
                         ) { receipt ->
                             currentReceipt = receipt
                             // يحدّث القائمة فورًا حتى يتلوّن العميل بالأحمر بمجرد الدفع

@@ -1,6 +1,7 @@
 package com.example.generatorapp.ui.screens
 
 import android.widget.Toast
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -12,6 +13,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.Subscriber
+import com.example.generatorapp.data.entities.SubscriberType
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptData
 import com.example.generatorapp.printing.ReceiptPrintManager
@@ -31,6 +33,15 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
 
     val subscribers by viewModel.subscribers.collectAsState(initial = emptyList())
     val generators by viewModel.generators.collectAsState(initial = emptyList())
+
+    // فلترة المشترك حسب المنطقة أولاً — تسهّل إيجاده بسرعة عند وجود عدد كبير من المشتركين
+    var billingAreaFilter by remember { mutableStateOf<String?>(null) }
+    val billingAreas = remember(subscribers) {
+        subscribers.map { it.area }.filter { it.isNotBlank() }.distinct().sorted()
+    }
+    val subscribersForBilling = remember(subscribers, billingAreaFilter) {
+        subscribers.filter { billingAreaFilter == null || it.area == billingAreaFilter }
+    }
 
     var selectedSubscriber by remember { mutableStateOf<Subscriber?>(null) }
     var selectedGenerator by remember { mutableStateOf<Generator?>(null) }
@@ -69,12 +80,45 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                 )
             }
 
+            if (billingAreas.isNotEmpty()) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    FilterChip(
+                        selected = billingAreaFilter == null,
+                        onClick = { billingAreaFilter = null },
+                        label = { Text("كل المناطق") }
+                    )
+                    billingAreas.forEach { a ->
+                        FilterChip(
+                            selected = billingAreaFilter == a,
+                            onClick = {
+                                billingAreaFilter = if (billingAreaFilter == a) null else a
+                                // إن أصبح المشترك المختار خارج نطاق الفلتر الجديد، نلغي اختياره
+                                if (selectedSubscriber != null && selectedSubscriber?.area != billingAreaFilter) {
+                                    selectedSubscriber = null
+                                }
+                            },
+                            label = { Text(a) }
+                        )
+                    }
+                }
+            }
+
             DropdownSelector(
                 label = "اختر المشترك",
-                items = subscribers,
+                items = subscribersForBilling,
                 selected = selectedSubscriber,
-                itemLabel = { it.name },
-                onSelected = { selectedSubscriber = it }
+                itemLabel = {
+                    val base = if (it.area.isNotBlank()) "${it.name} - ${it.area}" else it.name
+                    "$base (${it.subscriberType})"
+                },
+                onSelected = {
+                    selectedSubscriber = it
+                    // إعادة تعبئة سعر الأمبير حسب نوع المشترك (منزلي/تجاري) الجديد إن كان مولد مختارًا مسبقًا
+                    selectedGenerator?.let { gen -> pricePerAmpere = gen.sellPriceFor(it.subscriberType).toString() }
+                }
             )
 
             DropdownSelector(
@@ -84,8 +128,9 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                 itemLabel = { it.name },
                 onSelected = {
                     selectedGenerator = it
-                    // تعبئة تلقائية لسعر الأمبير من بيانات المولد (قابلة للتعديل)
-                    pricePerAmpere = it.pricePerAmpere.toString()
+                    // تعبئة تلقائية لسعر الأمبير حسب نوع المشترك المختار (منزلي/تجاري) - قابلة للتعديل
+                    val type = selectedSubscriber?.subscriberType ?: SubscriberType.RESIDENTIAL
+                    pricePerAmpere = it.sellPriceFor(type).toString()
                 }
             )
 
@@ -132,7 +177,8 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             generatorName = generator.name,
                             amperesText = amperes,
                             priceText = pricePerAmpere,
-                            note = note
+                            note = note,
+                            costPricePerAmpere = generator.costPricePerAmpere
                         ) { receipt -> currentReceipt = receipt }
                     } else {
                         // أول مرة بهذه الجلسة — يجب إدخال رمز PIN
@@ -209,7 +255,8 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             generatorName = generator.name,
                             amperesText = amperes,
                             priceText = pricePerAmpere,
-                            note = note
+                            note = note,
+                            costPricePerAmpere = generator.costPricePerAmpere
                         ) { receipt -> currentReceipt = receipt }
                     }
                 } else {
@@ -273,6 +320,7 @@ fun createInvoiceAndBuildReceipt(
     amperesText: String,
     priceText: String,
     note: String,
+    costPricePerAmpere: Double = 0.0,
     onReceiptReady: (ReceiptData) -> Unit
 ) {
     val amp = amperesText.toDoubleOrNull() ?: 0.0
@@ -284,7 +332,9 @@ fun createInvoiceAndBuildReceipt(
         generatorName = generatorName,
         amperes = amp,
         pricePerAmpere = price,
-        note = note
+        note = note,
+        subscriberType = subscriber.subscriberType,
+        costPricePerAmpere = costPricePerAmpere
     ) { invoice ->
         onReceiptReady(
             ReceiptData(
