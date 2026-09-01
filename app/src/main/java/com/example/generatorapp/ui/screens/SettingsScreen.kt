@@ -35,6 +35,7 @@ import androidx.work.await
 import com.example.generatorapp.backup.BackupManager
 import com.example.generatorapp.backup.BackupWorker
 import com.example.generatorapp.notifications.LatePaymentWorker
+import com.example.generatorapp.notifications.MaintenanceCheckWorker
 import com.example.generatorapp.notifications.NotificationHelper
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptPrintManager
@@ -48,6 +49,7 @@ import java.util.concurrent.TimeUnit
 
 private const val LATE_PAYMENT_WORK_NAME = "late_payment_daily_check"
 private const val BACKUP_WORK_NAME = "daily_auto_backup"
+private const val MAINTENANCE_WORK_NAME = "maintenance_daily_check"
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -57,6 +59,13 @@ fun SettingsScreen(onBack: () -> Unit) {
     var logoBitmap by remember { mutableStateOf<Bitmap?>(LogoManager.loadLogo(context)) }
     var message by remember { mutableStateOf<String?>(null) }
     var notificationsEnabled by remember { mutableStateOf(false) }
+    var maintenanceNotificationsEnabled by remember { mutableStateOf(false) }
+
+    // نتحقق من الحالة الفعلية لمهمة تنبيهات الصيانة المجدولة عند فتح الشاشة
+    LaunchedEffect(Unit) {
+        val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(MAINTENANCE_WORK_NAME).await()
+        maintenanceNotificationsEnabled = infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
+    }
 
     // ---------- تشخيص الطابعة الحرارية (اختبار جداول الحروف) ----------
     var charsetTestWidth by remember { mutableStateOf(32) } // 32 لـ58مم، 48 لـ80مم
@@ -137,6 +146,18 @@ fun SettingsScreen(onBack: () -> Unit) {
             scheduleLatePaymentWorker(context)
             notificationsEnabled = true
             message = "تم تفعيل تنبيهات المتأخرين اليومية"
+        } else {
+            message = "لازم تسمح بالإشعارات لتفعيل هذه الميزة"
+        }
+    }
+
+    val requestMaintenanceNotificationPermission = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        if (granted) {
+            scheduleMaintenanceWorker(context)
+            maintenanceNotificationsEnabled = true
+            message = "تم تفعيل تنبيهات الصيانة اليومية"
         } else {
             message = "لازم تسمح بالإشعارات لتفعيل هذه الميزة"
         }
@@ -304,6 +325,48 @@ fun SettingsScreen(onBack: () -> Unit) {
                             WorkManager.getInstance(context).cancelUniqueWork(LATE_PAYMENT_WORK_NAME)
                             notificationsEnabled = false
                             message = "تم إيقاف التنبيهات اليومية"
+                        }
+                    }
+                )
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("تنبيهات صيانة المولدات", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "عند التفعيل، يفحص التطبيق يوميًا بنود الصيانة (تغيير زيت / صيانة دورية) المستحقة " +
+                    "أو القريبة من الاستحقاق حسب ساعات تشغيل كل مولد، ويرسل إشعارًا بذلك",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text("تفعيل تنبيهات الصيانة اليومية")
+                Switch(
+                    checked = maintenanceNotificationsEnabled,
+                    onCheckedChange = { checked ->
+                        if (checked) {
+                            val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                                ContextCompat.checkSelfPermission(
+                                    context, Manifest.permission.POST_NOTIFICATIONS
+                                ) != PackageManager.PERMISSION_GRANTED
+
+                            if (needsPermission) {
+                                requestMaintenanceNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                            } else {
+                                NotificationHelper.createMaintenanceChannel(context)
+                                scheduleMaintenanceWorker(context)
+                                maintenanceNotificationsEnabled = true
+                                message = "تم تفعيل تنبيهات الصيانة اليومية"
+                            }
+                        } else {
+                            WorkManager.getInstance(context).cancelUniqueWork(MAINTENANCE_WORK_NAME)
+                            maintenanceNotificationsEnabled = false
+                            message = "تم إيقاف تنبيهات الصيانة اليومية"
                         }
                     }
                 )
@@ -537,6 +600,16 @@ private fun scheduleLatePaymentWorker(context: android.content.Context) {
     val request = PeriodicWorkRequestBuilder<LatePaymentWorker>(1, TimeUnit.DAYS).build()
     WorkManager.getInstance(context).enqueueUniquePeriodicWork(
         LATE_PAYMENT_WORK_NAME,
+        ExistingPeriodicWorkPolicy.KEEP,
+        request
+    )
+}
+
+/** يجدول فحصًا يوميًا (كل 24 ساعة) لبنود الصيانة المستحقة عبر WorkManager */
+private fun scheduleMaintenanceWorker(context: android.content.Context) {
+    val request = PeriodicWorkRequestBuilder<MaintenanceCheckWorker>(1, TimeUnit.DAYS).build()
+    WorkManager.getInstance(context).enqueueUniquePeriodicWork(
+        MAINTENANCE_WORK_NAME,
         ExistingPeriodicWorkPolicy.KEEP,
         request
     )

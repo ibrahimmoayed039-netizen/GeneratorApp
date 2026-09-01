@@ -1,14 +1,18 @@
 package com.example.generatorapp.ui.navigation
 
 import androidx.compose.runtime.Composable
+import androidx.navigation.NavType
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.navArgument
 import com.example.generatorapp.ui.screens.BillingScreen
 import com.example.generatorapp.ui.screens.ExpensesScreen
+import com.example.generatorapp.ui.screens.GeneratorDetailScreen
 import com.example.generatorapp.ui.screens.GeneratorsScreen
 import com.example.generatorapp.ui.screens.HomeScreen
 import com.example.generatorapp.ui.screens.LatePaymentsScreen
+import com.example.generatorapp.ui.screens.MaintenanceAlertsScreen
 import com.example.generatorapp.ui.screens.PaymentStatusScreen
 import com.example.generatorapp.ui.screens.ProfitReportScreen
 import com.example.generatorapp.ui.screens.SettingsScreen
@@ -19,6 +23,7 @@ object Routes {
     const val HOME = "home"
     const val SUBSCRIBERS = "subscribers"
     const val GENERATORS = "generators"
+    const val GENERATOR_DETAIL = "generator_detail/{generatorId}"
     const val BILLING = "billing"
     const val SETTINGS = "settings"
     const val STATEMENT = "statement"
@@ -26,6 +31,9 @@ object Routes {
     const val EXPENSES = "expenses"
     const val PROFIT_REPORT = "profit_report"
     const val PAYMENT_STATUS = "payment_status"
+    const val MAINTENANCE_ALERTS = "maintenance_alerts"
+
+    fun generatorDetail(generatorId: Long) = "generator_detail/$generatorId"
 }
 
 @Composable
@@ -43,14 +51,25 @@ fun AppNavigation() {
                 onOpenLatePayments = { navController.navigate(Routes.LATE_PAYMENTS) },
                 onOpenExpenses = { navController.navigate(Routes.EXPENSES) },
                 onOpenProfitReport = { navController.navigate(Routes.PROFIT_REPORT) },
-                onOpenPaymentStatus = { navController.navigate(Routes.PAYMENT_STATUS) }
+                onOpenPaymentStatus = { navController.navigate(Routes.PAYMENT_STATUS) },
+                onOpenMaintenanceAlerts = { navController.navigate(Routes.MAINTENANCE_ALERTS) }
             )
         }
         composable(Routes.SUBSCRIBERS) {
             SubscribersScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.GENERATORS) {
-            GeneratorsScreen(onBack = { navController.popBackStack() })
+            GeneratorsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenGenerator = { id -> navController.navigate(Routes.generatorDetail(id)) }
+            )
+        }
+        composable(
+            Routes.GENERATOR_DETAIL,
+            arguments = listOf(navArgument("generatorId") { type = NavType.LongType })
+        ) { backStackEntry ->
+            val generatorId = backStackEntry.arguments?.getLong("generatorId") ?: 0L
+            GeneratorDetailScreen(generatorId = generatorId, onBack = { navController.popBackStack() })
         }
         composable(Routes.BILLING) {
             BillingScreen(onBack = { navController.popBackStack() })
@@ -72,6 +91,12 @@ fun AppNavigation() {
         }
         composable(Routes.PAYMENT_STATUS) {
             PaymentStatusScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.MAINTENANCE_ALERTS) {
+            MaintenanceAlertsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenGenerator = { id -> navController.navigate(Routes.generatorDetail(id)) }
+            )
         }
     }
 }

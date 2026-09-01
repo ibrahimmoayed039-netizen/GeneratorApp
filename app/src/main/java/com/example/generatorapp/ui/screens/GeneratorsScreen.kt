@@ -1,5 +1,6 @@
 package com.example.generatorapp.ui.screens
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -12,7 +13,11 @@ import com.example.generatorapp.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun GeneratorsScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
+fun GeneratorsScreen(
+    viewModel: MainViewModel = viewModel(),
+    onBack: () -> Unit,
+    onOpenGenerator: (Long) -> Unit = {}
+) {
     val generators by viewModel.generators.collectAsState(initial = emptyList())
 
     var name by remember { mutableStateOf("") }
@@ -36,8 +41,12 @@ fun GeneratorsScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit)
                 ListItem(
                     headlineContent = { Text(generator.name) },
                     supportingContent = {
-                        Text("القدرة: ${generator.capacityKva} كيلو فولت أمبير - سعر الأمبير: ${generator.pricePerAmpere}")
-                    }
+                        Text(
+                            "القدرة: ${generator.capacityKva} كيلو فولت أمبير - سعر الأمبير: ${generator.pricePerAmpere}\n" +
+                                "ساعات التشغيل: ${generator.currentHours}"
+                        )
+                    },
+                    modifier = Modifier.clickable { onOpenGenerator(generator.id) }
                 )
                 Divider()
             }

@@ -5,6 +5,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.MoneyOff
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Receipt
@@ -30,7 +31,8 @@ fun HomeScreen(
     onOpenLatePayments: () -> Unit,
     onOpenExpenses: () -> Unit,
     onOpenProfitReport: () -> Unit,
-    onOpenPaymentStatus: () -> Unit
+    onOpenPaymentStatus: () -> Unit,
+    onOpenMaintenanceAlerts: () -> Unit
 ) {
     Scaffold(
         topBar = { TopAppBar(title = { Text("مدير المولدات") }) }
@@ -45,6 +47,7 @@ fun HomeScreen(
         ) {
             HomeCard("المشتركون", Icons.Filled.People, onOpenSubscribers)
             HomeCard("المولدات", Icons.Filled.Bolt, onOpenGenerators)
+            HomeCard("تنبيهات الصيانة", Icons.Filled.Build, onOpenMaintenanceAlerts)
             HomeCard("الفواتير والطباعة", Icons.Filled.Receipt, onOpenBilling)
             HomeCard("حالة الدفع الشهرية", Icons.Filled.AttachMoney, onOpenPaymentStatus)
             HomeCard("كشف حساب شهري", Icons.Filled.Description, onOpenStatement)

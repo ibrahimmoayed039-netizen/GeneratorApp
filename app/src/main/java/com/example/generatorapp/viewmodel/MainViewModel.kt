@@ -5,14 +5,30 @@ import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.generatorapp.data.AppDatabase
 import com.example.generatorapp.data.entities.Expense
+import com.example.generatorapp.data.entities.FaultLog
 import com.example.generatorapp.data.entities.Generator
+import com.example.generatorapp.data.entities.GeneratorHourLog
 import com.example.generatorapp.data.entities.Invoice
+import com.example.generatorapp.data.entities.MaintenanceItem
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.data.entities.Subscription
 import com.example.generatorapp.repository.AppRepository
 import com.example.generatorapp.util.DateUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+
+/** حالة استحقاق بند صيانة معيّن، محسوبة من ساعات التشغيل الحالية للمولد */
+data class MaintenanceStatus(
+    val item: MaintenanceItem,
+    val generatorName: String,
+    val currentHours: Double
+) {
+    val hoursSinceService: Double get() = (currentHours - item.lastServiceHours).coerceAtLeast(0.0)
+    val hoursRemaining: Double get() = item.intervalHours - hoursSinceService
+    val isDue: Boolean get() = hoursRemaining <= 0.0
+    /** يعتبر "قريب" إذا تبقّى له 10% أو أقل من مدة الصيانة (وبحد أقصى 25 ساعة) */
+    val isDueSoon: Boolean get() = !isDue && hoursRemaining <= (item.intervalHours * 0.1).coerceAtMost(25.0)
+}
 
 /** يمثل مشترك متأخر بالدفع مع تاريخ آخر دفعة له (إن وُجدت) */
 data class LateSubscriberInfo(
@@ -240,5 +256,97 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val cost = expensesList.sumOf { it.amount }
             onResult(ProfitReportDetails(ProfitSummary(revenue, cost, revenue - cost), invoicesList, expensesList))
         }
+    }
+
+    // ---------- ساعات تشغيل المولد ----------
+
+    /** سجل قراءات ساعات التشغيل لمولد معيّن */
+    fun hourLogsForGenerator(generatorId: Long) = repository.hourLogsForGenerator(generatorId)
+
+    /** يضيف قراءة جديدة لعداد الساعات (تحدّث تلقائيًا القراءة الحالية المخزّنة على المولد) */
+    fun addHourLog(generatorId: Long, hours: Double, note: String = "") {
+        viewModelScope.launch { repository.addHourLog(generatorId, hours, note) }
+    }
+
+    fun deleteHourLog(log: GeneratorHourLog) {
+        viewModelScope.launch { repository.deleteHourLog(log) }
+    }
+
+    // ---------- بنود الصيانة الدورية ----------
+
+    fun maintenanceItemsForGenerator(generatorId: Long) = repository.maintenanceItemsForGenerator(generatorId)
+
+    fun addMaintenanceItem(generatorId: Long, type: String, intervalHours: Double, note: String = "") {
+        viewModelScope.launch {
+            val generator = repository.generators.first().find { it.id == generatorId }
+            repository.addMaintenanceItem(
+                MaintenanceItem(
+                    generatorId = generatorId,
+                    type = type,
+                    intervalHours = intervalHours,
+                    lastServiceHours = generator?.currentHours ?: 0.0,
+                    lastServiceDate = System.currentTimeMillis(),
+                    note = note
+                )
+            )
+        }
+    }
+
+    /** يسجّل تنفيذ الصيانة الآن (يصفّر العدّاد عند ساعات التشغيل الحالية) */
+    fun markMaintenanceServiced(item: MaintenanceItem) {
+        viewModelScope.launch { repository.markMaintenanceServiced(item) }
+    }
+
+    fun deleteMaintenanceItem(item: MaintenanceItem) {
+        viewModelScope.launch { repository.deleteMaintenanceItem(item) }
+    }
+
+    /** كل بنود الصيانة بكل المولدات مع حالة استحقاقها، للمولدات المستحقة أو القريبة من الاستحقاق فقط */
+    fun loadMaintenanceAlerts(onResult: (List<MaintenanceStatus>) -> Unit) {
+        viewModelScope.launch {
+            val pairs = repository.generatorsWithMaintenance()
+            val statuses = pairs.flatMap { (generator, items) ->
+                items.map { MaintenanceStatus(it, generator.name, generator.currentHours) }
+            }.filter { it.isDue || it.isDueSoon }
+                .sortedBy { it.hoursRemaining }
+            onResult(statuses)
+        }
+    }
+
+    // ---------- سجل الأعطال والتصليحات ----------
+
+    fun faultLogsForGenerator(generatorId: Long) = repository.faultLogsForGenerator(generatorId)
+
+    fun addFaultLog(generatorId: Long, description: String, repairDescription: String = "", cost: Double = 0.0) {
+        viewModelScope.launch {
+            repository.addFaultLog(
+                FaultLog(
+                    generatorId = generatorId,
+                    date = System.currentTimeMillis(),
+                    faultDescription = description,
+                    repairDescription = repairDescription,
+                    cost = cost,
+                    resolved = repairDescription.isNotBlank()
+                )
+            )
+        }
+    }
+
+    /** يحدّث بند عطل موجود (مثلًا: إضافة وصف التصليح وتكلفته وتعليمه كمُصلَّح) */
+    fun updateFaultLog(log: FaultLog, repairDescription: String, cost: Double, resolved: Boolean) {
+        viewModelScope.launch {
+            repository.updateFaultLog(
+                log.copy(
+                    repairDescription = repairDescription,
+                    cost = cost,
+                    resolved = resolved,
+                    resolvedDate = if (resolved) System.currentTimeMillis() else null
+                )
+            )
+        }
+    }
+
+    fun deleteFaultLog(log: FaultLog) {
+        viewModelScope.launch { repository.deleteFaultLog(log) }
     }
 }

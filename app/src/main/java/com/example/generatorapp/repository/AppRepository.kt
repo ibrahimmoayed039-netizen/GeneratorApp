@@ -4,10 +4,14 @@ import com.example.generatorapp.data.AppDatabase
 import com.example.generatorapp.data.dao.SubscriberLastPayment
 import com.example.generatorapp.data.entities.AmpereChangeLog
 import com.example.generatorapp.data.entities.Expense
+import com.example.generatorapp.data.entities.FaultLog
 import com.example.generatorapp.data.entities.Generator
+import com.example.generatorapp.data.entities.GeneratorHourLog
 import com.example.generatorapp.data.entities.Invoice
+import com.example.generatorapp.data.entities.MaintenanceItem
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.data.entities.Subscription
+import kotlinx.coroutines.flow.first
 
 /**
  * طبقة وسيطة بين قاعدة البيانات وباقي التطبيق (ViewModel)
@@ -71,4 +75,62 @@ class AppRepository(private val db: AppDatabase) {
     suspend fun addExpense(expense: Expense) = db.expenseDao().insert(expense)
     suspend fun deleteExpense(expense: Expense) = db.expenseDao().delete(expense)
     fun expensesBetween(start: Long, end: Long) = db.expenseDao().getBetween(start, end)
+
+    // ---------- ساعات تشغيل المولد ----------
+
+    /** سجل قراءات ساعات التشغيل لمولد معيّن، من الأحدث للأقدم */
+    fun hourLogsForGenerator(generatorId: Long) = db.generatorHourLogDao().getForGenerator(generatorId)
+
+    /**
+     * يضيف قراءة جديدة لعداد ساعات التشغيل، ويحدّث القراءة الحالية المخزّنة على المولد نفسه
+     * (تُستخدم بشاشة قائمة المولدات وبفحص تنبيهات الصيانة دون الحاجة لجلب آخر قراءة كل مرة).
+     */
+    suspend fun addHourLog(generatorId: Long, hours: Double, note: String = "") {
+        db.generatorHourLogDao().insert(
+            GeneratorHourLog(generatorId = generatorId, hours = hours, date = System.currentTimeMillis(), note = note)
+        )
+        val generator = db.generatorDao().getById(generatorId)
+        if (generator != null && hours > generator.currentHours) {
+            db.generatorDao().update(generator.copy(currentHours = hours))
+        }
+    }
+
+    suspend fun deleteHourLog(log: GeneratorHourLog) = db.generatorHourLogDao().delete(log)
+
+    // ---------- بنود الصيانة الدورية (تغيير زيت / صيانة دورية) ----------
+
+    /** بنود الصيانة الخاصة بمولد معيّن */
+    fun maintenanceItemsForGenerator(generatorId: Long) = db.maintenanceItemDao().getForGenerator(generatorId)
+
+    /** كل بنود الصيانة بكل المولدات (تُستخدم لفحص التنبيهات اليومي وشاشة تنبيهات الصيانة) */
+    val allMaintenanceItems = db.maintenanceItemDao().getAll()
+
+    suspend fun addMaintenanceItem(item: MaintenanceItem) = db.maintenanceItemDao().insert(item)
+    suspend fun updateMaintenanceItem(item: MaintenanceItem) = db.maintenanceItemDao().update(item)
+    suspend fun deleteMaintenanceItem(item: MaintenanceItem) = db.maintenanceItemDao().delete(item)
+
+    /** يسجّل تنفيذ الصيانة الآن: يحدّث آخر ساعة/تاريخ خدمة عند ساعات التشغيل الحالية للمولد */
+    suspend fun markMaintenanceServiced(item: MaintenanceItem) {
+        val generator = db.generatorDao().getById(item.generatorId)
+        val hoursNow = generator?.currentHours ?: item.lastServiceHours
+        db.maintenanceItemDao().update(
+            item.copy(lastServiceHours = hoursNow, lastServiceDate = System.currentTimeMillis())
+        )
+    }
+
+    /** يجلب كل المولدات وبنود صيانتها دفعة واحدة (لفحص التنبيهات) */
+    suspend fun generatorsWithMaintenance(): List<Pair<Generator, List<MaintenanceItem>>> {
+        val allGenerators = generators.first()
+        val allItems = allMaintenanceItems.first().groupBy { it.generatorId }
+        return allGenerators.map { gen -> gen to (allItems[gen.id] ?: emptyList()) }
+    }
+
+    // ---------- سجل الأعطال والتصليحات ----------
+
+    /** سجل الأعطال الخاص بمولد معيّن، من الأحدث للأقدم */
+    fun faultLogsForGenerator(generatorId: Long) = db.faultLogDao().getForGenerator(generatorId)
+
+    suspend fun addFaultLog(log: FaultLog) = db.faultLogDao().insert(log)
+    suspend fun updateFaultLog(log: FaultLog) = db.faultLogDao().update(log)
+    suspend fun deleteFaultLog(log: FaultLog) = db.faultLogDao().delete(log)
 }

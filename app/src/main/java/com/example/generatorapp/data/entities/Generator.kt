@@ -12,5 +12,7 @@ data class Generator(
     val id: Long = 0,
     val name: String,
     val capacityKva: Double,
-    val pricePerAmpere: Double
+    val pricePerAmpere: Double,
+    /** آخر قراءة معروفة لعداد ساعات التشغيل (تُحدَّث تلقائيًا عند إضافة قراءة جديدة بسجل الساعات) */
+    val currentHours: Double = 0.0
 )
