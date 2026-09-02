@@ -8,7 +8,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.printing.PdfReportGenerator
+import com.example.generatorapp.ui.components.CircularStat
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.MainViewModel
 import com.example.generatorapp.viewmodel.ProfitReportDetails
 
@@ -76,6 +78,36 @@ fun ProfitReportScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Uni
 
             details?.let { d ->
                 val s = d.summary
+                val totalAmperes = d.invoices.sumOf { it.amperes }
+                val netMarginPercent = if (s.totalRevenue > 0) (s.netProfit / s.totalRevenue * 100) else 0.0
+                val ampereMarginPercent = if (s.totalRevenue > 0) (s.ampereMarginProfit / s.totalRevenue * 100) else 0.0
+
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 20.dp, horizontal = 4.dp),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        CircularStat(
+                            value = Formatters.formatMoney(totalAmperes),
+                            label = "الأمبيرات المستخدمة",
+                            progress = 1f,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        CircularStat(
+                            value = "${Formatters.formatMoney(netMarginPercent)}%",
+                            label = "نسبة صافي الربح",
+                            progress = (netMarginPercent / 100).toFloat(),
+                            color = if (netMarginPercent >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
+                        )
+                        CircularStat(
+                            value = "${Formatters.formatMoney(ampereMarginPercent)}%",
+                            label = "نسبة ربح الأمبير",
+                            progress = (ampereMarginPercent / 100).toFloat(),
+                            color = if (ampereMarginPercent >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
+                        )
+                    }
+                }
+
                 SummaryCard(
                     title = "إجمالي الإيرادات",
                     value = s.totalRevenue,
@@ -91,6 +123,11 @@ fun ProfitReportScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Uni
                     value = s.netProfit,
                     color = if (s.netProfit >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error,
                     emphasized = true
+                )
+                SummaryCard(
+                    title = "ربح فرق سعر الأمبير (تكلفة ← بيع)",
+                    value = s.ampereMarginProfit,
+                    color = if (s.ampereMarginProfit >= 0) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error
                 )
 
                 OutlinedButton(
@@ -121,7 +158,7 @@ private fun SummaryCard(title: String, value: Double, color: androidx.compose.ui
         Column(modifier = Modifier.padding(18.dp)) {
             Text(title, style = MaterialTheme.typography.bodyMedium)
             Text(
-                "%.2f".format(value),
+                Formatters.formatMoney(value),
                 style = if (emphasized) MaterialTheme.typography.titleLarge else MaterialTheme.typography.titleMedium,
                 color = color
             )

@@ -12,7 +12,8 @@ import kotlinx.coroutines.flow.first
 
 /**
  * مهمة خلفية (WorkManager) تتحقق يوميًا من بنود الصيانة (تغيير زيت / صيانة دورية) المستحقة
- * أو القريبة من الاستحقاق بناءً على ساعات تشغيل كل مولد، وتُظهر إشعارًا إن وجدت.
+ * أو القريبة من الاستحقاق بناءً على ساعات تشغيل كل مولد وعدد الأيام منذ آخر خدمة (أيهما أسبق)،
+ * وتُظهر إشعارًا إن وجدت.
  */
 class MaintenanceCheckWorker(context: Context, params: WorkerParameters) : CoroutineWorker(context, params) {
 
@@ -25,13 +26,25 @@ class MaintenanceCheckWorker(context: Context, params: WorkerParameters) : Corou
 
             var dueCount = 0
             var soonCount = 0
+            val now = System.currentTimeMillis()
             items.forEach { item ->
                 val currentHours = generators[item.generatorId]?.currentHours ?: return@forEach
                 val hoursSinceService = (currentHours - item.lastServiceHours).coerceAtLeast(0.0)
                 val hoursRemaining = item.intervalHours - hoursSinceService
+
+                val hasDaySchedule = item.intervalDays > 0
+                val daysSinceService = (now - item.lastServiceDate).coerceAtLeast(0) / (24L * 60 * 60 * 1000)
+                val daysRemaining = if (hasDaySchedule) item.intervalDays - daysSinceService else Long.MAX_VALUE
+
+                val isDue = hoursRemaining <= 0.0 || (hasDaySchedule && daysRemaining <= 0)
+                val isSoon = !isDue && (
+                    hoursRemaining <= (item.intervalHours * 0.1).coerceAtMost(25.0) ||
+                        (hasDaySchedule && daysRemaining <= (item.intervalDays * 0.1).coerceAtMost(7.0))
+                    )
+
                 when {
-                    hoursRemaining <= 0.0 -> dueCount++
-                    hoursRemaining <= (item.intervalHours * 0.1).coerceAtMost(25.0) -> soonCount++
+                    isDue -> dueCount++
+                    isSoon -> soonCount++
                 }
             }
 

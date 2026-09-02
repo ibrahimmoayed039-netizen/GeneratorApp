@@ -17,18 +17,42 @@ import com.example.generatorapp.repository.AppRepository
 import com.example.generatorapp.util.DateUtils
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import java.util.concurrent.TimeUnit
 
-/** حالة استحقاق بند صيانة معيّن، محسوبة من ساعات التشغيل الحالية للمولد */
+/** حالة استحقاق بند صيانة معيّن، محسوبة من ساعات التشغيل الحالية للمولد ومن عدد الأيام منذ آخر خدمة */
 data class MaintenanceStatus(
     val item: MaintenanceItem,
     val generatorName: String,
-    val currentHours: Double
+    val currentHours: Double,
+    private val nowMillis: Long = System.currentTimeMillis()
 ) {
     val hoursSinceService: Double get() = (currentHours - item.lastServiceHours).coerceAtLeast(0.0)
     val hoursRemaining: Double get() = item.intervalHours - hoursSinceService
-    val isDue: Boolean get() = hoursRemaining <= 0.0
-    /** يعتبر "قريب" إذا تبقّى له 10% أو أقل من مدة الصيانة (وبحد أقصى 25 ساعة) */
-    val isDueSoon: Boolean get() = !isDue && hoursRemaining <= (item.intervalHours * 0.1).coerceAtMost(25.0)
+
+    /** هل البند مفعّل عليه تنبيه بعدد الأيام أيضًا (0 = تنبيه بالساعات فقط) */
+    val hasDaySchedule: Boolean get() = item.intervalDays > 0
+
+    val daysSinceService: Long get() =
+        TimeUnit.MILLISECONDS.toDays((nowMillis - item.lastServiceDate).coerceAtLeast(0))
+
+    val daysRemaining: Long get() =
+        if (hasDaySchedule) item.intervalDays - daysSinceService else Long.MAX_VALUE
+
+    /** مستحقة إذا انتهت مدة الساعات، أو انتهت مدة الأيام (أيهما أسبق) */
+    val isDue: Boolean get() = hoursRemaining <= 0.0 || (hasDaySchedule && daysRemaining <= 0)
+
+    /** يعتبر "قريب" إذا تبقّى له 10% أو أقل من مدة الساعات، أو 10% أو أقل (وبحد أقصى 7 أيام) من مدة الأيام */
+    val isDueSoon: Boolean get() = !isDue && (
+        hoursRemaining <= (item.intervalHours * 0.1).coerceAtMost(25.0) ||
+            (hasDaySchedule && daysRemaining <= (item.intervalDays * 0.1).coerceAtMost(7.0))
+        )
+
+    /** أقرب نسبة متبقية بين جدول الساعات وجدول الأيام (الأصغر هو الأكثر إلحاحًا)، تُستخدم للترتيب */
+    val urgencyFraction: Double get() {
+        val hoursFraction = if (item.intervalHours > 0) hoursRemaining / item.intervalHours else Double.MAX_VALUE
+        val daysFraction = if (hasDaySchedule) daysRemaining.toDouble() / item.intervalDays else Double.MAX_VALUE
+        return minOf(hoursFraction, daysFraction)
+    }
 }
 
 /** يمثل مشترك متأخر بالدفع مع تاريخ آخر دفعة له (إن وُجدت) */
@@ -55,7 +79,13 @@ data class PaymentStatusInfo(
 data class ProfitSummary(
     val totalRevenue: Double,
     val totalExpenses: Double,
-    val netProfit: Double
+    val netProfit: Double,
+    /**
+     * الربح الناتج فقط عن الفرق بين سعر تكلفة الأمبير وسعر بيعه (مجموع Invoice.profit)،
+     * أي: مجموع (سعر البيع - سعر التكلفة) × عدد الأمبيرات لكل فاتورة.
+     * هذا مختلف عن "صافي الربح" الذي يطرح كل المصروفات المسجَّلة (ديزل/صيانة/أخرى) من الإيرادات.
+     */
+    val ampereMarginProfit: Double = 0.0
 )
 
 /** تفاصيل كاملة لتقرير الأرباح (تُستخدم لتصدير PDF مفصّل بالفواتير والمصروفات) */
@@ -323,9 +353,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 DateUtils.yearRange(year)
             }
-            val revenue = repository.invoicesBetween(start, end).first().sumOf { it.amount }
+            val invoicesInRange = repository.invoicesBetween(start, end).first()
+            val revenue = invoicesInRange.sumOf { it.amount }
             val cost = repository.expensesBetween(start, end).first().sumOf { it.amount }
-            onResult(ProfitSummary(revenue, cost, revenue - cost))
+            val ampereMargin = invoicesInRange.sumOf { it.profit }
+            onResult(ProfitSummary(revenue, cost, revenue - cost, ampereMargin))
         }
     }
 
@@ -341,7 +373,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val expensesList = repository.expensesBetween(start, end).first()
             val revenue = invoicesList.sumOf { it.amount }
             val cost = expensesList.sumOf { it.amount }
-            onResult(ProfitReportDetails(ProfitSummary(revenue, cost, revenue - cost), invoicesList, expensesList))
+            val ampereMargin = invoicesList.sumOf { it.profit }
+            onResult(
+                ProfitReportDetails(
+                    ProfitSummary(revenue, cost, revenue - cost, ampereMargin),
+                    invoicesList,
+                    expensesList
+                )
+            )
         }
     }
 
@@ -363,7 +402,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun maintenanceItemsForGenerator(generatorId: Long) = repository.maintenanceItemsForGenerator(generatorId)
 
-    fun addMaintenanceItem(generatorId: Long, type: String, intervalHours: Double, note: String = "") {
+    fun addMaintenanceItem(generatorId: Long, type: String, intervalHours: Double, intervalDays: Int = 0, note: String = "") {
         viewModelScope.launch {
             val generator = repository.generators.first().find { it.id == generatorId }
             repository.addMaintenanceItem(
@@ -373,6 +412,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     intervalHours = intervalHours,
                     lastServiceHours = generator?.currentHours ?: 0.0,
                     lastServiceDate = System.currentTimeMillis(),
+                    intervalDays = intervalDays,
                     note = note
                 )
             )
@@ -395,7 +435,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val statuses = pairs.flatMap { (generator, items) ->
                 items.map { MaintenanceStatus(it, generator.name, generator.currentHours) }
             }.filter { it.isDue || it.isDueSoon }
-                .sortedBy { it.hoursRemaining }
+                .sortedBy { it.urgencyFraction }
             onResult(statuses)
         }
     }

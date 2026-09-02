@@ -7,6 +7,7 @@ import com.example.generatorapp.data.entities.Expense
 import com.example.generatorapp.data.entities.Invoice
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.ProfitSummary
 import java.io.File
 import java.text.SimpleDateFormat
@@ -21,7 +22,7 @@ object PdfReportGenerator {
 
     private val fileStamp = SimpleDateFormat("yyyyMMdd_HHmmss", Locale.US)
 
-    private fun money(v: Double) = "%.2f".format(v)
+    private fun money(v: Double) = Formatters.formatMoney(v)
 
     /** كشف حساب شهري لمشترك معيّن */
     fun generateStatementPdf(
@@ -74,6 +75,11 @@ object PdfReportGenerator {
             "صافي الربح",
             money(summary.netProfit),
             color = if (summary.netProfit >= 0) android.graphics.Color.parseColor("#1F5FB3") else android.graphics.Color.parseColor("#B3401F")
+        )
+        builder.highlightBox(
+            "ربح فرق سعر الأمبير (تكلفة ← بيع)",
+            money(summary.ampereMarginProfit),
+            color = if (summary.ampereMarginProfit >= 0) android.graphics.Color.parseColor("#1F5FB3") else android.graphics.Color.parseColor("#B3401F")
         )
         builder.spacer(10f)
 

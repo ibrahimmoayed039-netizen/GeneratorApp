@@ -14,6 +14,7 @@ import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.printing.PdfReportGenerator
 import com.example.generatorapp.printing.ReceiptPrintManager
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -86,7 +87,7 @@ fun StatementScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) 
                         Spacer(modifier = Modifier.height(4.dp))
                         Text("عدد الفواتير: ${list.size}")
                         Text(
-                            "الإجمالي: %.2f".format(total),
+                            "الإجمالي: ${Formatters.formatMoney(total)}",
                             style = MaterialTheme.typography.titleMedium,
                             color = MaterialTheme.colorScheme.primary
                         )
@@ -96,7 +97,7 @@ fun StatementScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) 
                 LazyColumn(modifier = Modifier.weight(1f)) {
                     items(list) { invoice ->
                         ListItem(
-                            headlineContent = { Text("${invoice.generatorName} - %.2f".format(invoice.amount)) },
+                            headlineContent = { Text("${invoice.generatorName} - ${Formatters.formatMoney(invoice.amount)}") },
                             supportingContent = { Text(DateUtils.formatDate(invoice.date)) }
                         )
                         Divider()

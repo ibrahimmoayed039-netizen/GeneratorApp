@@ -40,10 +40,9 @@ import com.example.generatorapp.notifications.MessageSettings
 import com.example.generatorapp.notifications.NotificationHelper
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptPrintManager
-import com.example.generatorapp.printing.getPairedBluetoothDevices
 import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
-import com.example.generatorapp.ui.components.BluetoothDeviceDialog
+import com.example.generatorapp.ui.components.PrinterDiscoveryDialog
 import kotlinx.coroutines.launch
 import java.io.File
 import java.util.concurrent.TimeUnit
@@ -92,11 +91,10 @@ fun SettingsScreen(onBack: () -> Unit) {
     var charsetTestWidth by remember { mutableStateOf(32) } // 32 لـ58مم، 48 لـ80مم
     var charsetTestInProgress by remember { mutableStateOf(false) }
     var charsetTestMessage by remember { mutableStateOf<String?>(null) }
-    var showDevicePicker by remember { mutableStateOf(false) }
-    var pairedDevices by remember { mutableStateOf<List<android.bluetooth.BluetoothDevice>>(emptyList()) }
+    var showPrinterScan by remember { mutableStateOf(false) }
 
     fun runCharsetTest(device: android.bluetooth.BluetoothDevice) {
-        showDevicePicker = false
+        showPrinterScan = false
         charsetTestInProgress = true
         charsetTestMessage = null
         scope.launch {
@@ -111,29 +109,32 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
-    // صلاحية BLUETOOTH_CONNECT مطلوبة وقت التشغيل بدءًا من أندرويد 12 (API 31) فقط
-    val requestBluetoothPermission = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        if (granted) {
-            pairedDevices = getPairedBluetoothDevices(context)
-            showDevicePicker = true
+    // صلاحيات البحث الفعلي عن أجهزة قريبة: BLUETOOTH_SCAN + BLUETOOTH_CONNECT بدءًا من أندرويد 12،
+    // أو ACCESS_FINE_LOCATION فيما قبل ذلك (شرط أساسي لاكتشاف البلوتوث الكلاسيكي على أندرويد القديم)
+    val requestScanPermissions = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        if (results.values.all { it }) {
+            showPrinterScan = true
         } else {
-            charsetTestMessage = "لازم تسمح بصلاحية البلوتوث لعرض الطابعات المقترنة"
+            charsetTestMessage = "لازم تسمح بصلاحيات البلوتوث والموقع للبحث عن طابعات قريبة"
         }
     }
 
-    fun openDevicePicker() {
-        val needsPermission = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S &&
-            ContextCompat.checkSelfPermission(
-                context, Manifest.permission.BLUETOOTH_CONNECT
-            ) != PackageManager.PERMISSION_GRANTED
-
-        if (needsPermission) {
-            requestBluetoothPermission.launch(Manifest.permission.BLUETOOTH_CONNECT)
+    fun openPrinterScan() {
+        val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
         } else {
-            pairedDevices = getPairedBluetoothDevices(context)
-            showDevicePicker = true
+            listOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        val missing = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+
+        if (missing.isEmpty()) {
+            showPrinterScan = true
+        } else {
+            requestScanPermissions.launch(missing.toTypedArray())
         }
     }
 
@@ -297,12 +298,12 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             Button(
                 enabled = !charsetTestInProgress,
-                onClick = { openDevicePicker() },
+                onClick = { openPrinterScan() },
                 modifier = Modifier.fillMaxWidth()
             ) {
                 Text(
                     if (charsetTestInProgress) "جارٍ الطباعة..."
-                    else "🔍 اختبار جداول الحروف (لإصلاح اللغة العربية)"
+                    else "🔍 بحث عن طابعات قريبة واختبار جداول الحروف"
                 )
             }
 
@@ -699,11 +700,9 @@ fun SettingsScreen(onBack: () -> Unit) {
         )
     }
 
-    if (showDevicePicker) {
-        BluetoothDeviceDialog(
-            title = "اختر الطابعة الحرارية",
-            devices = pairedDevices,
-            onDismiss = { showDevicePicker = false },
+    if (showPrinterScan) {
+        PrinterDiscoveryDialog(
+            onDismiss = { showPrinterScan = false },
             onDeviceSelected = { device -> runCharsetTest(device) }
         )
     }

@@ -11,6 +11,7 @@ import android.print.PrintDocumentAdapter
 import android.print.PrintDocumentInfo
 import com.example.generatorapp.data.entities.Invoice
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import java.io.FileOutputStream
 import java.io.IOException
 
@@ -94,7 +95,7 @@ class StatementPrintAdapter(
         for (inv in invoicesList) {
             canvas.drawText(DateUtils.formatDate(inv.date), rightX, y, rowPaint)
             canvas.drawText(inv.generatorName, midX, y, rowPaint)
-            canvas.drawText("%.2f".format(inv.amount), leftX, y, rowPaint)
+            canvas.drawText(Formatters.formatMoney(inv.amount), leftX, y, rowPaint)
             y += 22f
             if (y > pageInfo.pageHeight - 80f) break // حماية بسيطة من تجاوز الصفحة
         }
@@ -102,7 +103,7 @@ class StatementPrintAdapter(
         y += 10f
         canvas.drawLine(40f, y, pageInfo.pageWidth - 40f, y, rowPaint)
         y += 26f
-        canvas.drawText("الإجمالي: %.2f".format(total), rightX, y, totalPaint)
+        canvas.drawText("الإجمالي: ${Formatters.formatMoney(total)}", rightX, y, totalPaint)
 
         document.finishPage(page)
 

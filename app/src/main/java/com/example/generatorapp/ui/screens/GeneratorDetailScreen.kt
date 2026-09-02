@@ -16,6 +16,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.FaultLog
 import com.example.generatorapp.util.DateUtils
 import com.example.generatorapp.viewmodel.MainViewModel
+import java.util.concurrent.TimeUnit
 
 private enum class DetailTab(val title: String) {
     HOURS("ساعات التشغيل"),
@@ -81,8 +82,8 @@ fun GeneratorDetailScreen(generatorId: Long, viewModel: MainViewModel = viewMode
             )
             DetailTab.MAINTENANCE -> AddMaintenanceDialog(
                 onDismiss = { showAddDialog = false },
-                onSave = { type, interval, note ->
-                    viewModel.addMaintenanceItem(generatorId, type, interval, note)
+                onSave = { type, interval, intervalDays, note ->
+                    viewModel.addMaintenanceItem(generatorId, type, interval, intervalDays, note)
                     showAddDialog = false
                 }
             )
@@ -170,7 +171,12 @@ private fun MaintenanceTab(generatorId: Long, currentHours: Double, viewModel: M
         items(maintenanceItems) { item ->
             val hoursSinceService = (currentHours - item.lastServiceHours).coerceAtLeast(0.0)
             val hoursRemaining = item.intervalHours - hoursSinceService
-            val isDue = hoursRemaining <= 0.0
+            val hasDaySchedule = item.intervalDays > 0
+            val daysSinceService = TimeUnit.MILLISECONDS.toDays(
+                (System.currentTimeMillis() - item.lastServiceDate).coerceAtLeast(0)
+            )
+            val daysRemaining = if (hasDaySchedule) item.intervalDays - daysSinceService else Long.MAX_VALUE
+            val isDue = hoursRemaining <= 0.0 || (hasDaySchedule && daysRemaining <= 0)
 
             ListItem(
                 leadingContent = {
@@ -182,10 +188,19 @@ private fun MaintenanceTab(generatorId: Long, currentHours: Double, viewModel: M
                 },
                 headlineContent = { Text(item.type, fontWeight = FontWeight.Bold) },
                 supportingContent = {
-                    Text(
-                        if (isDue) "مستحقة الآن (تجاوزت بـ ${formatHours(-hoursRemaining)} ساعة)"
-                        else "متبقٍ ${formatHours(hoursRemaining)} ساعة (كل ${formatHours(item.intervalHours)} ساعة)"
-                    )
+                    Column {
+                        Text(
+                            if (hoursRemaining <= 0.0) "مستحقة بالساعات (تجاوزت بـ ${formatHours(-hoursRemaining)} ساعة)"
+                            else "متبقٍ ${formatHours(hoursRemaining)} ساعة (كل ${formatHours(item.intervalHours)} ساعة)"
+                        )
+                        if (hasDaySchedule) {
+                            Text(
+                                if (daysRemaining <= 0) "مستحقة بالأيام (تجاوزت بـ ${-daysRemaining} يوم)"
+                                else "متبقٍ $daysRemaining يوم (كل ${item.intervalDays} يوم)",
+                                color = if (daysRemaining <= 0) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
                 },
                 trailingContent = {
                     Row {
@@ -202,10 +217,11 @@ private fun MaintenanceTab(generatorId: Long, currentHours: Double, viewModel: M
 @Composable
 private fun AddMaintenanceDialog(
     onDismiss: () -> Unit,
-    onSave: (String, Double, String) -> Unit
+    onSave: (String, Double, Int, String) -> Unit
 ) {
     var type by remember { mutableStateOf("") }
     var interval by remember { mutableStateOf("") }
+    var intervalDays by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
     AlertDialog(
@@ -223,13 +239,20 @@ private fun AddMaintenanceDialog(
                     onValueChange = { interval = it },
                     label = { Text("كل كم ساعة تشغيل") }
                 )
+                OutlinedTextField(
+                    value = intervalDays,
+                    onValueChange = { intervalDays = it },
+                    label = { Text("أو كل كم يوم (اختياري)") },
+                    supportingText = { Text("مثلاً: تغيير الزيت كل 250 ساعة أو كل 90 يوم، أيهما يصل أولًا. اتركه فارغًا للتنبيه بالساعات فقط") }
+                )
                 OutlinedTextField(value = note, onValueChange = { note = it }, label = { Text("ملاحظة (اختياري)") })
             }
         },
         confirmButton = {
             TextButton(onClick = {
                 val i = interval.toDoubleOrNull()
-                if (type.isNotBlank() && i != null && i > 0) onSave(type, i, note)
+                val days = intervalDays.toIntOrNull() ?: 0
+                if (type.isNotBlank() && i != null && i > 0) onSave(type, i, days, note)
             }) { Text("حفظ") }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text("إلغاء") } }

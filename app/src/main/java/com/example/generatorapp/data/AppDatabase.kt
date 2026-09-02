@@ -37,7 +37,7 @@ import com.example.generatorapp.data.entities.Subscription
         Expense::class, AmpereChangeLog::class, GeneratorHourLog::class,
         MaintenanceItem::class, FaultLog::class, PriceChangeLog::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -147,6 +147,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * يضيف: عدد أيام الاستحقاق الاختياري لكل بند صيانة (بجانب ساعات التشغيل)،
+         * حتى يمكن ضبط بند مثل "تغيير الزيت كل 250 ساعة أو كل 90 يوم أيهما أقرب".
+         * القيمة الافتراضية 0 تعني: تنبيه بالساعات فقط كما كان سابقًا، بدون أي تغيير
+         * على سلوك البنود الحالية بعد الترقية.
+         */
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE maintenance_items ADD COLUMN intervalDays INTEGER NOT NULL DEFAULT 0")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -154,7 +166,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "generator_app.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()
                     .build()

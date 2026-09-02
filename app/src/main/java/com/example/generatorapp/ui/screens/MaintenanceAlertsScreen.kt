@@ -40,7 +40,7 @@ fun MaintenanceAlertsScreen(
             Card(modifier = Modifier.fillMaxWidth().padding(16.dp)) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text(
-                        "بنود الصيانة المستحقة الآن أو القريبة من الاستحقاق حسب ساعات تشغيل كل مولد",
+                        "بنود الصيانة المستحقة الآن أو القريبة من الاستحقاق حسب ساعات تشغيل كل مولد أو عدد الأيام منذ آخر خدمة",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     Spacer(modifier = Modifier.height(8.dp))
@@ -71,12 +71,26 @@ fun MaintenanceAlertsScreen(
                                 },
                                 headlineContent = { Text("${status.generatorName} - ${status.item.type}") },
                                 supportingContent = {
-                                    Text(
-                                        if (status.isDue)
-                                            "مستحقة الآن (تجاوزت بـ ${status.hoursRemaining.unaryMinus().toLong()} ساعة)"
-                                        else
-                                            "متبقٍ ${status.hoursRemaining.toLong()} ساعة"
-                                    )
+                                    Column {
+                                        Text(
+                                            if (status.hoursRemaining <= 0.0)
+                                                "مستحقة بالساعات (تجاوزت بـ ${status.hoursRemaining.unaryMinus().toLong()} ساعة)"
+                                            else
+                                                "متبقٍ ${status.hoursRemaining.toLong()} ساعة"
+                                        )
+                                        if (status.hasDaySchedule) {
+                                            Text(
+                                                if (status.daysRemaining <= 0)
+                                                    "مستحقة بالأيام (تجاوزت بـ ${-status.daysRemaining} يوم)"
+                                                else
+                                                    "متبقٍ ${status.daysRemaining} يوم",
+                                                color = if (status.daysRemaining <= 0)
+                                                    MaterialTheme.colorScheme.error
+                                                else
+                                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
                                 },
                                 modifier = Modifier.clickable { onOpenGenerator(status.item.generatorId) }
                             )

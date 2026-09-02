@@ -1,6 +1,7 @@
 package com.example.generatorapp.printing
 
 import android.graphics.Bitmap
+import com.example.generatorapp.util.Formatters
 import java.text.SimpleDateFormat
 import java.util.Locale
 
@@ -34,10 +35,10 @@ data class ReceiptData(
         "التاريخ: ${formattedDate()}",
         "المشترك: $subscriberName",
         "المولد: $generatorName",
-        "عدد الأمبيرات: $amperes A",
-        "سعر الأمبير: ${"%.2f".format(pricePerAmpere)}",
+        "عدد الأمبيرات: ${Formatters.formatMoney(amperes)} أمبير",
+        "سعر الأمبير: ${Formatters.formatMoney(pricePerAmpere)}",
         "----------------------------",
-        "المبلغ الإجمالي: ${"%.2f".format(amount)}",
+        "المبلغ الإجمالي: ${Formatters.formatMoney(amount)}",
         if (note.isNotBlank()) "ملاحظة: $note" else "",
         "----------------------------",
         "شكراً لتعاملكم معنا"

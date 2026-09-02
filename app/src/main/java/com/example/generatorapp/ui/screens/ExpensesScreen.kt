@@ -10,6 +10,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.Expense
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.MainViewModel
 
 private val categories = listOf("ديزل", "صيانة", "أخرى")
@@ -42,7 +43,7 @@ fun ExpensesScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                 Column(modifier = Modifier.padding(16.dp)) {
                     Text("إجمالي كل المصروفات المسجّلة", style = MaterialTheme.typography.bodyMedium)
                     Text(
-                        "%.2f".format(total),
+                        Formatters.formatMoney(total),
                         style = MaterialTheme.typography.titleLarge,
                         color = MaterialTheme.colorScheme.error
                     )
@@ -104,7 +105,7 @@ fun ExpensesScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
 @Composable
 private fun ExpenseRow(expense: Expense, onDelete: () -> Unit) {
     ListItem(
-        headlineContent = { Text("${expense.category} - ${"%.2f".format(expense.amount)}") },
+        headlineContent = { Text("${expense.category} - ${Formatters.formatMoney(expense.amount)}") },
         supportingContent = {
             Text(DateUtils.formatDate(expense.date) + if (expense.note.isNotBlank()) " - ${expense.note}" else "")
         },

@@ -17,6 +17,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.SubscriberType
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -122,8 +123,7 @@ private fun GeneratorRow(
     )
 }
 
-private fun formatPrice(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else "%.2f".format(value)
+private fun formatPrice(value: Double): String = Formatters.formatMoney(value)
 
 /** حوار إضافة مولد جديد: يطلب تكلفة الأمبير وسعر البيع للمنزلي وللتجاري كل على حدة */
 @OptIn(ExperimentalMaterial3Api::class)
