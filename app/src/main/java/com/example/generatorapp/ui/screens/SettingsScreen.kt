@@ -32,6 +32,7 @@ import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkInfo
 import androidx.work.WorkManager
 import androidx.work.await
+import com.example.generatorapp.MaintenanceAlertPrefs
 import com.example.generatorapp.backup.BackupManager
 import com.example.generatorapp.backup.BackupWorker
 import com.example.generatorapp.notifications.LatePaymentWorker
@@ -49,7 +50,9 @@ import java.util.concurrent.TimeUnit
 
 private const val LATE_PAYMENT_WORK_NAME = "late_payment_daily_check"
 private const val BACKUP_WORK_NAME = "daily_auto_backup"
-private const val MAINTENANCE_WORK_NAME = "maintenance_daily_check"
+// اسم مهمة فحص الصيانة اليومي مُعرَّف مركزيًا في GeneratorApp.kt لأنه يُستخدم أيضًا
+// عند جدولة المهمة تلقائيًا لحظة فتح التطبيق (وليس فقط من هذه الشاشة)
+private val MAINTENANCE_WORK_NAME = com.example.generatorapp.MAINTENANCE_WORK_NAME
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -178,6 +181,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     ) { granted ->
         if (granted) {
             scheduleMaintenanceWorker(context)
+            MaintenanceAlertPrefs.setUserDisabled(context, false)
             maintenanceNotificationsEnabled = true
             message = "تم تفعيل تنبيهات الصيانة اليومية"
         } else {
@@ -508,11 +512,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                             } else {
                                 NotificationHelper.createMaintenanceChannel(context)
                                 scheduleMaintenanceWorker(context)
+                                MaintenanceAlertPrefs.setUserDisabled(context, false)
                                 maintenanceNotificationsEnabled = true
                                 message = "تم تفعيل تنبيهات الصيانة اليومية"
                             }
                         } else {
                             WorkManager.getInstance(context).cancelUniqueWork(MAINTENANCE_WORK_NAME)
+                            MaintenanceAlertPrefs.setUserDisabled(context, true)
                             maintenanceNotificationsEnabled = false
                             message = "تم إيقاف تنبيهات الصيانة اليومية"
                         }
