@@ -30,18 +30,26 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import com.example.generatorapp.printing.BluetoothConnectionManager
 import com.example.generatorapp.printing.BluetoothPrinterScanner
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 /**
  * حوار يبحث فعليًا (Scan) عن أجهزة بلوتوث قريبة قابلة للاكتشاف، سواء كانت مقترنة
  * (Paired) بالهاتف من قبل أو لا. الأجهزة المقترنة تظهر فورًا، والأجهزة الجديدة
  * تظهر تباعًا أثناء البحث (حوالي 12 ثانية). عند اختيار جهاز غير مقترن، يحاول
  * التطبيق قرنه (Pairing) تلقائيًا، وبمجرد نجاح القرن يُختار مباشرة كطابعة.
+ *
+ * بعد نجاح الاقتران (أو عند اختيار جهاز مقترن مسبقًا)، يفتح التطبيق اتصالاً دائمًا
+ * بالطابعة عبر [BluetoothConnectionManager] فورًا، فتبقى "متصلة دائمًا" ولا تحتاج
+ * إعادة اتصال قبل كل عملية طباعة لاحقة.
  */
 @SuppressLint("MissingPermission")
 @OptIn(ExperimentalMaterial3Api::class)
@@ -51,10 +59,19 @@ fun PrinterDiscoveryDialog(
     onDeviceSelected: (BluetoothDevice) -> Unit
 ) {
     val context = LocalContext.current
+    val coroutineScope = rememberCoroutineScope()
     val devices = remember { mutableStateMapOf<String, BluetoothDevice>() }
     var isScanning by remember { mutableStateOf(true) }
     var pairingAddress by remember { mutableStateOf<String?>(null) }
     var errorMessage by remember { mutableStateOf<String?>(null) }
+
+    fun selectAndStayConnected(device: BluetoothDevice) {
+        onDeviceSelected(device)
+        // فتح الاتصال الدائم في الخلفية فور الاختيار، دون انتظار أول طباعة
+        coroutineScope.launch(Dispatchers.IO) {
+            BluetoothConnectionManager.connectQuietly(device)
+        }
+    }
 
     DisposableEffect(Unit) {
         val scanner = BluetoothPrinterScanner(context)
@@ -64,7 +81,7 @@ fun PrinterDiscoveryDialog(
                 when (bondState) {
                     BluetoothDevice.BOND_BONDED -> {
                         pairingAddress = null
-                        onDeviceSelected(device)
+                        selectAndStayConnected(device)
                     }
                     BluetoothDevice.BOND_NONE -> {
                         pairingAddress = null
@@ -137,7 +154,7 @@ fun PrinterDiscoveryDialog(
                                 modifier = Modifier.clickable(enabled = pairingAddress == null) {
                                     errorMessage = null
                                     if (isPaired) {
-                                        onDeviceSelected(device)
+                                        selectAndStayConnected(device)
                                     } else {
                                         pairingAddress = device.address
                                         val paired = BluetoothPrinterScanner(context).pairDevice(device)

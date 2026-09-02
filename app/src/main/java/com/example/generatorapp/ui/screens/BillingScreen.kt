@@ -1,6 +1,11 @@
 package com.example.generatorapp.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
+import android.os.Build
 import android.widget.Toast
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -10,6 +15,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.Subscriber
@@ -56,6 +62,63 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
     // بوابة رمز PIN: يجب على الموظف إدخال الرمز الصحيح قبل تسجيل أي دفعة
     var showPinDialog by remember { mutableStateOf(false) }
     var pinError by remember { mutableStateOf<String?>(null) }
+
+    // الطباعة الحرارية عبر البلوتوث الكلاسيكي تحتاج صلاحية BLUETOOTH_CONNECT وقت التشغيل
+    // بدءًا من أندرويد 12 (API 31)، وإلا فإن قراءة قائمة الأجهزة المقترنة تفشل بصمت (استثناء
+    // SecurityException) ويبدو للمستخدم أن الزر "لا يعمل".
+    fun printThermal(receipt: ReceiptData) {
+        val device = findFirstPairedThermalPrinter(context)
+        if (device == null) {
+            Toast.makeText(
+                context,
+                "لم يتم العثور على طابعة حرارية مقترنة عبر البلوتوث",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        scope.launch {
+            try {
+                ReceiptPrintManager.printViaThermal(device, receipt, thermalWidth)
+                Toast.makeText(context, "تم إرسال الوصل للطابعة", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, e.message ?: "فشل الاتصال بالطابعة", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    var pendingThermalReceipt by remember { mutableStateOf<ReceiptData?>(null) }
+    val requestBluetoothPermissions = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val receipt = pendingThermalReceipt
+        pendingThermalReceipt = null
+        if (results.values.all { it } && receipt != null) {
+            printThermal(receipt)
+        } else if (receipt != null) {
+            Toast.makeText(
+                context,
+                "لازم تسمح بصلاحية البلوتوث حتى تقدر تطبع على الطابعة الحرارية",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    fun requestThermalPrint(receipt: ReceiptData) {
+        val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            emptyList()
+        }
+        val missing = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            printThermal(receipt)
+        } else {
+            pendingThermalReceipt = receipt
+            requestBluetoothPermissions.launch(missing.toTypedArray())
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -206,25 +269,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
 
                     // طباعة حرارية عبر البلوتوث (يتطلب طابعة مقترنة مسبقًا)
                     Button(
-                        onClick = {
-                            val device = findFirstPairedThermalPrinter(context)
-                            if (device == null) {
-                                Toast.makeText(
-                                    context,
-                                    "لم يتم العثور على طابعة حرارية مقترنة عبر البلوتوث",
-                                    Toast.LENGTH_LONG
-                                ).show()
-                            } else {
-                                scope.launch {
-                                    try {
-                                        ReceiptPrintManager.printViaThermal(device, receipt, thermalWidth)
-                                        Toast.makeText(context, "تم إرسال الوصل للطابعة", Toast.LENGTH_SHORT).show()
-                                    } catch (e: Exception) {
-                                        Toast.makeText(context, e.message ?: "فشل الاتصال بالطابعة", Toast.LENGTH_LONG).show()
-                                    }
-                                }
-                            }
-                        },
+                        onClick = { requestThermalPrint(receipt) },
                         modifier = Modifier.weight(1f)
                     ) { Text("طباعة حرارية") }
                 }

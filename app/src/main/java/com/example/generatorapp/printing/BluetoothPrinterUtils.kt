@@ -12,7 +12,13 @@ import android.content.Context
 fun findFirstPairedThermalPrinter(context: Context): BluetoothDevice? {
     val adapter = BluetoothAdapter.getDefaultAdapter() ?: return null
     if (!adapter.isEnabled) return null
-    return adapter.bondedDevices?.firstOrNull()
+    return try {
+        adapter.bondedDevices?.firstOrNull()
+    } catch (e: SecurityException) {
+        // لم يتم منح صلاحية BLUETOOTH_CONNECT (أندرويد 12+) — يجب طلبها من واجهة المستخدم
+        // قبل استدعاء هذه الدالة؛ هنا فقط نتفادى تحطّم التطبيق ونعيد null بدلاً من ذلك.
+        null
+    }
 }
 
 /**
