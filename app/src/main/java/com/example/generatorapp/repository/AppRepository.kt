@@ -140,7 +140,20 @@ class AppRepository(private val db: AppDatabase) {
         }
     }
 
-    suspend fun deleteHourLog(log: GeneratorHourLog) = db.generatorHourLogDao().delete(log)
+    /**
+     * يحذف قراءة ساعات تشغيل، ثم يعيد حساب "الساعات الحالية" المخزّنة على المولد
+     * من أعلى قراءة متبقية بعد الحذف (أو صفر إن لم يتبقَّ أي سجل)، حتى لا يبقى
+     * الرقم المعروض بالشاشة عالقًا على قيمة السجل المحذوف.
+     */
+    suspend fun deleteHourLog(log: GeneratorHourLog) {
+        db.generatorHourLogDao().delete(log)
+        val remaining = db.generatorHourLogDao().getForGenerator(log.generatorId).first()
+        val newCurrentHours = remaining.maxOfOrNull { it.hours } ?: 0.0
+        val generator = db.generatorDao().getById(log.generatorId)
+        if (generator != null && generator.currentHours != newCurrentHours) {
+            db.generatorDao().update(generator.copy(currentHours = newCurrentHours))
+        }
+    }
 
     // ---------- بنود الصيانة الدورية (تغيير زيت / صيانة دورية) ----------
 
