@@ -23,7 +23,6 @@ import com.example.generatorapp.data.entities.SubscriberType
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptData
 import com.example.generatorapp.printing.ReceiptPrintManager
-import com.example.generatorapp.printing.findFirstPairedThermalPrinter
 import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.ui.components.PinDialog
@@ -67,11 +66,11 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
     // بدءًا من أندرويد 12 (API 31)، وإلا فإن قراءة قائمة الأجهزة المقترنة تفشل بصمت (استثناء
     // SecurityException) ويبدو للمستخدم أن الزر "لا يعمل".
     fun printThermal(receipt: ReceiptData) {
-        val device = findFirstPairedThermalPrinter(context)
+        val device = com.example.generatorapp.printing.findPreferredThermalPrinter(context)
         if (device == null) {
             Toast.makeText(
                 context,
-                "لم يتم العثور على طابعة حرارية مقترنة عبر البلوتوث",
+                "ما فيه طابعة حرارية محفوظة. روح للإعدادات > فحص الطابعة، واختر طابعتك أول مرة.",
                 Toast.LENGTH_LONG
             ).show()
             return

@@ -98,12 +98,14 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     fun runCharsetTest(device: android.bluetooth.BluetoothDevice) {
         showPrinterScan = false
+        // احفظ هذا الجهاز كطابعة الافتراضية للاستخدام في كل أزرار "طباعة حرارية" بالتطبيق
+        com.example.generatorapp.printing.savePreferredPrinterAddress(context, device.address)
         charsetTestInProgress = true
         charsetTestMessage = null
         scope.launch {
             try {
                 ReceiptPrintManager.printCharsetTestPage(device, charsetTestWidth)
-                charsetTestMessage = "تم إرسال صفحة اختبار جداول الحروف للطابعة"
+                charsetTestMessage = "تم حفظ الطابعة كطابعة افتراضية، وتم إرسال صفحة اختبار جداول الحروف لها"
             } catch (e: Exception) {
                 charsetTestMessage = e.message ?: "فشل الاتصال بالطابعة"
             } finally {
