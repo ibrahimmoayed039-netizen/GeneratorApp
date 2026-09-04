@@ -103,6 +103,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val generators = repository.generators
     val invoices = repository.invoices
     val expenses = repository.expenses
+    /** كل الاشتراكات الفعّالة حاليًا (بكل المولدات) — تُستخدم لحساب الأمبيرات الموزّعة لكل مولد */
+    val activeSubscriptions = repository.activeSubscriptions
 
     fun addSubscriber(
         name: String,

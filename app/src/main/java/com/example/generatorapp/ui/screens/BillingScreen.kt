@@ -383,6 +383,7 @@ fun createInvoiceAndBuildReceipt(
         onReceiptReady(
             ReceiptData(
                 subscriberName = invoice.subscriberName,
+                meterNumber = subscriber.meterNumber,
                 generatorName = invoice.generatorName,
                 amperes = invoice.amperes,
                 pricePerAmpere = invoice.pricePerAmpere,

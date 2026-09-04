@@ -35,6 +35,7 @@ import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.ui.components.PinDialog
 import com.example.generatorapp.ui.components.ReceiptPreview
 import com.example.generatorapp.util.DateUtils
+import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.MainViewModel
 import com.example.generatorapp.viewmodel.PaymentStatusInfo
 import kotlinx.coroutines.launch
@@ -366,6 +367,27 @@ private fun PaySubscriberDialog(
                             value = pricePerAmpere, onValueChange = { pricePerAmpere = it },
                             label = { Text("سعر الأمبير") }, modifier = Modifier.fillMaxWidth()
                         )
+                        // السعر الإجمالي المتوقع = عدد الأمبيرات × سعر الأمبير، يتحدّث فورًا مع أي تعديل على السعر
+                        val totalPrice = (amperes.toDoubleOrNull() ?: 0.0) * (pricePerAmpere.toDoubleOrNull() ?: 0.0)
+                        Surface(
+                            color = MaterialTheme.colorScheme.primaryContainer,
+                            shape = MaterialTheme.shapes.small,
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("السعر الإجمالي", fontWeight = FontWeight.SemiBold)
+                                Text(
+                                    Formatters.formatMoney(totalPrice),
+                                    fontWeight = FontWeight.Bold,
+                                    style = MaterialTheme.typography.titleMedium
+                                )
+                            }
+                        }
                         OutlinedTextField(
                             value = note, onValueChange = { note = it },
                             label = { Text("ملاحظة (اختياري)") }, modifier = Modifier.fillMaxWidth()

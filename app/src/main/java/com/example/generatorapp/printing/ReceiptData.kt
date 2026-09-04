@@ -15,6 +15,7 @@ import java.util.Locale
 data class ReceiptData(
     val shopName: String = "مدير المولدات",
     val subscriberName: String,
+    val meterNumber: String = "",
     val generatorName: String,
     val amperes: Double,
     val pricePerAmpere: Double,
@@ -34,6 +35,7 @@ data class ReceiptData(
         "وصل دفع",
         "التاريخ: ${formattedDate()}",
         "المشترك: $subscriberName",
+        if (meterNumber.isNotBlank()) "رقم العداد: $meterNumber" else "",
         "المولد: $generatorName",
         "عدد الأمبيرات: ${Formatters.formatMoney(amperes)} أمبير",
         "سعر الأمبير: ${Formatters.formatMoney(pricePerAmpere)}",
@@ -56,6 +58,7 @@ data class ReceiptData(
         add(ReceiptLine.Divider(double = true))
         add(ReceiptLine.Field("التاريخ", formattedDate()))
         add(ReceiptLine.Field("المشترك", subscriberName))
+        if (meterNumber.isNotBlank()) add(ReceiptLine.Field("رقم العداد", meterNumber))
         add(ReceiptLine.Field("المولد", generatorName))
         add(ReceiptLine.Field("عدد الأمبيرات", "${Formatters.formatMoney(amperes)} أمبير"))
         add(ReceiptLine.Field("سعر الأمبير", Formatters.formatMoney(pricePerAmpere)))

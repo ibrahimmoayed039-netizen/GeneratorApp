@@ -5,6 +5,7 @@ import android.bluetooth.BluetoothDevice
 import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Color
+import android.graphics.Paint
 import android.text.Layout
 import android.text.StaticLayout
 import android.text.TextPaint
@@ -132,11 +133,24 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
 
         for (line in receipt.toReceiptLines()) {
             when (line) {
-                is ReceiptLine.Header ->
-                    writeArabicLine(output, line.text, bold = true, alignment = Layout.Alignment.ALIGN_CENTER)
+                is ReceiptLine.Header -> {
+                    // اسم المحل داخل لوحة مؤطّرة (إطار مربّع) ليبرز كترويسة مميّزة أعلى الوصل
+                    val headerBitmap = renderTextLineBitmap(
+                        line.text, printerWidthDots, bold = true, alignment = Layout.Alignment.ALIGN_CENTER
+                    )
+                    val framed = frameBitmap(
+                        headerBitmap,
+                        verticalPadding = 14,
+                        borderWidth = 3,
+                        marginDots = (printerWidthDots * 0.05f).toInt()
+                    )
+                    output.write(ALIGN_CENTER)
+                    printRasterBitmap(output, framed)
+                    output.write(LINE_FEED)
+                }
 
                 is ReceiptLine.Badge ->
-                    writeArabicLine(output, line.text, alignment = Layout.Alignment.ALIGN_CENTER)
+                    writeArabicLine(output, line.text, bold = true, alignment = Layout.Alignment.ALIGN_CENTER)
 
                 is ReceiptLine.Divider -> {
                     val char = if (line.double) "=" else "-"
@@ -145,20 +159,33 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
                     output.write(LINE_FEED)
                 }
 
-                is ReceiptLine.Field ->
+                is ReceiptLine.Field -> {
+                    // عناوين أقسام فرعية تفصل بيانات المشترك عن تفاصيل الاشتراك/الدفع بصريًا
+                    when (line.label) {
+                        "التاريخ" -> writeSectionTitle(output, "بيانات المشترك")
+                        "عدد الأمبيرات" -> {
+                            writeLightDivider(output)
+                            writeSectionTitle(output, "تفاصيل الاشتراك")
+                        }
+                    }
                     writeFieldLine(output, line.label, line.value, printerWidthDots)
+                }
 
                 is ReceiptLine.Total -> {
+                    // المبلغ الإجمالي داخل صندوق مؤطّر بخط كبير غامق ليكون أبرز عنصر بالوصل
                     output.write(LINE_FEED)
-                    writeFieldLine(output, line.label, line.value, printerWidthDots, emphasize = true)
+                    writeFieldLine(output, line.label, line.value, printerWidthDots, emphasize = true, framed = true)
                     output.write(LINE_FEED)
                 }
 
                 is ReceiptLine.Note ->
                     writeArabicLine(output, line.text, alignment = Layout.Alignment.ALIGN_OPPOSITE)
 
-                is ReceiptLine.Footer ->
+                is ReceiptLine.Footer -> {
+                    // خط متقطّع يحاكي خط قص الوصل الحقيقي قبل عبارة الشكر
+                    writeLightDivider(output)
                     writeArabicLine(output, line.text, alignment = Layout.Alignment.ALIGN_CENTER)
+                }
             }
         }
 
@@ -167,6 +194,46 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
         output.write(LINE_FEED)
         output.write(CUT_PAPER)
         output.flush()
+    }
+
+    /** يطبع عنوان قسم فرعي (مثل "بيانات المشترك") بخط غامق وسط الصفحة، محاط برمزين صغيرين للتمييز */
+    private fun writeSectionTitle(output: OutputStream, title: String) {
+        writeArabicLine(output, "• $title •", bold = true, alignment = Layout.Alignment.ALIGN_CENTER)
+    }
+
+    /** يطبع فاصلًا خفيفًا متقطّعًا (نقاط) يفصل بين أقسام فرعية دون ثقل بصري خط الفاصل الرئيسي */
+    private fun writeLightDivider(output: OutputStream) {
+        output.write(ALIGN_CENTER)
+        val pattern = "- ".repeat(paperWidthChars / 2 + 1).take(paperWidthChars)
+        output.write(pattern.toByteArray(Charsets.US_ASCII))
+        output.write(LINE_FEED)
+    }
+
+    /**
+     * يحيط بتمابًا (نص أو حقل مرسوم) بإطار مربّع أسود، لإبراز عناصر مهمة (اسم المحل،
+     * المبلغ الإجمالي) كصندوق مميّز داخل الوصل بدل نص عادي متصل بباقي الأسطر.
+     */
+    private fun frameBitmap(content: Bitmap, verticalPadding: Int, borderWidth: Int, marginDots: Int): Bitmap {
+        val width = content.width
+        val height = content.height + verticalPadding * 2
+        val framed = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(framed)
+        canvas.drawColor(Color.WHITE)
+        val borderPaint = Paint().apply {
+            color = Color.BLACK
+            style = Paint.Style.STROKE
+            strokeWidth = borderWidth.toFloat()
+            isAntiAlias = true
+        }
+        canvas.drawRect(
+            marginDots.toFloat(),
+            borderWidth / 2f,
+            (width - marginDots).toFloat(),
+            (height - borderWidth / 2f),
+            borderPaint
+        )
+        canvas.drawBitmap(content, 0f, verticalPadding.toFloat(), null)
+        return framed
     }
 
     /**
@@ -181,7 +248,8 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
         label: String,
         value: String,
         printerWidthDots: Int,
-        emphasize: Boolean = false
+        emphasize: Boolean = false,
+        framed: Boolean = false
     ) {
         val bitmap = renderFieldLineBitmap(label, value, printerWidthDots, emphasize)
         if (bitmap == null) {
@@ -189,8 +257,13 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
             writeArabicLine(output, "$label: $value", bold = emphasize, alignment = Layout.Alignment.ALIGN_OPPOSITE)
             return
         }
+        val finalBitmap = if (framed) {
+            frameBitmap(bitmap, verticalPadding = 10, borderWidth = 3, marginDots = (printerWidthDots * 0.05f).toInt())
+        } else {
+            bitmap
+        }
         output.write(ALIGN_CENTER)
-        printRasterBitmap(output, bitmap)
+        printRasterBitmap(output, finalBitmap)
         output.write(LINE_FEED)
     }
 

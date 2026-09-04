@@ -85,6 +85,9 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
         ) {
             ReceiptInfoRow("التاريخ", receipt.formattedDate())
             ReceiptInfoRow("المشترك", receipt.subscriberName)
+            if (receipt.meterNumber.isNotBlank()) {
+                ReceiptInfoRow("رقم العداد", receipt.meterNumber)
+            }
             ReceiptInfoRow("المولد", receipt.generatorName)
             ReceiptInfoRow("عدد الأمبيرات", "${Formatters.formatMoney(receipt.amperes)} أمبير")
             ReceiptInfoRow("سعر الأمبير", Formatters.formatMoney(receipt.pricePerAmpere))

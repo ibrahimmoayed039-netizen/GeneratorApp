@@ -28,6 +28,12 @@ fun GeneratorsScreen(
     onOpenGenerator: (Long) -> Unit = {}
 ) {
     val generators by viewModel.generators.collectAsState(initial = emptyList())
+    val activeSubscriptions by viewModel.activeSubscriptions.collectAsState(initial = emptyList())
+    /** مجموع أمبيرات الاشتراكات الفعّالة لكل مولد، محسوبة مرة واحدة من قائمة الاشتراكات الفعّالة */
+    val distributedAmperesByGenerator = remember(activeSubscriptions) {
+        activeSubscriptions.groupBy { it.generatorId }
+            .mapValues { (_, subs) -> subs.sumOf { it.amperes } }
+    }
 
     var showAddDialog by remember { mutableStateOf(false) }
     var editingPricesFor by remember { mutableStateOf<Generator?>(null) }
@@ -48,6 +54,7 @@ fun GeneratorsScreen(
             items(generators) { generator ->
                 GeneratorRow(
                     generator = generator,
+                    distributedAmperes = distributedAmperesByGenerator[generator.id] ?: 0.0,
                     onOpen = { onOpenGenerator(generator.id) },
                     onEditPrices = { editingPricesFor = generator },
                     onShowHistory = { showingHistoryFor = generator }
@@ -91,36 +98,94 @@ fun GeneratorsScreen(
 @Composable
 private fun GeneratorRow(
     generator: Generator,
+    distributedAmperes: Double,
     onOpen: () -> Unit,
     onEditPrices: () -> Unit,
     onShowHistory: () -> Unit
 ) {
-    ListItem(
-        headlineContent = { Text(generator.name) },
-        supportingContent = {
-            Column {
-                Text("القدرة: ${generator.capacityKva} كيلو فولت أمبير - ساعات التشغيل: ${generator.currentHours}")
-                Text("تكلفة الأمبير: ${formatPrice(generator.costPricePerAmpere)}")
-                Text(
-                    "بيع منزلي: ${formatPrice(generator.residentialPricePerAmpere)}" +
-                        " (ربح ${formatPrice(generator.profitPerAmpereFor(SubscriberType.RESIDENTIAL))}/أمبير)"
-                )
-                Text(
-                    "بيع تجاري: ${formatPrice(generator.commercialPricePerAmpere)}" +
-                        " (ربح ${formatPrice(generator.profitPerAmpereFor(SubscriberType.COMMERCIAL))}/أمبير)"
-                )
-            }
-        },
-        trailingContent = {
-            Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
-                IconButton(onClick = onEditPrices) {
-                    Icon(Icons.Default.Edit, contentDescription = "تعديل الأسعار")
+    Column {
+        ListItem(
+            headlineContent = { Text(generator.name) },
+            supportingContent = {
+                Column {
+                    Text("القدرة: ${generator.capacityKva} كيلو فولت أمبير - ساعات التشغيل: ${generator.currentHours}")
+                    Text("تكلفة الأمبير: ${formatPrice(generator.costPricePerAmpere)}")
+                    Text(
+                        "بيع منزلي: ${formatPrice(generator.residentialPricePerAmpere)}" +
+                            " (ربح ${formatPrice(generator.profitPerAmpereFor(SubscriberType.RESIDENTIAL))}/أمبير)"
+                    )
+                    Text(
+                        "بيع تجاري: ${formatPrice(generator.commercialPricePerAmpere)}" +
+                            " (ربح ${formatPrice(generator.profitPerAmpereFor(SubscriberType.COMMERCIAL))}/أمبير)"
+                    )
                 }
-                TextButton(onClick = onShowHistory) { Text("سجل الأسعار") }
+            },
+            trailingContent = {
+                Column(horizontalAlignment = androidx.compose.ui.Alignment.End) {
+                    IconButton(onClick = onEditPrices) {
+                        Icon(Icons.Default.Edit, contentDescription = "تعديل الأسعار")
+                    }
+                    TextButton(onClick = onShowHistory) { Text("سجل الأسعار") }
+                }
+            },
+            modifier = Modifier.clickable(onClick = onOpen)
+        )
+        DistributedAmperesCard(
+            distributedAmperes = distributedAmperes,
+            capacityKva = generator.capacityKva
+        )
+    }
+}
+
+/**
+ * بطاقة تعرض عداد الأمبيرات الموزّعة على المشتركين (مجموع أمبيرات الاشتراكات الفعّالة)
+ * مقابل السعة الكلية للمولد، مع شريط تقدّم يوضّح نسبة الاستهلاك من السعة.
+ */
+@Composable
+private fun DistributedAmperesCard(distributedAmperes: Double, capacityKva: Double) {
+    val progress = if (capacityKva > 0) (distributedAmperes / capacityKva).toFloat().coerceIn(0f, 1f) else 0f
+    val isOverCapacity = capacityKva > 0 && distributedAmperes > capacityKva
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(horizontal = 16.dp, vertical = 4.dp),
+        colors = CardDefaults.cardColors(
+            containerColor = if (isOverCapacity)
+                MaterialTheme.colorScheme.errorContainer
+            else
+                MaterialTheme.colorScheme.secondaryContainer
+        )
+    ) {
+        Column(modifier = Modifier.padding(12.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween
+            ) {
+                Text("الأمبيرات الموزّعة على المشتركين", fontWeight = FontWeight.SemiBold)
+                Text(
+                    "${Formatters.formatMoney(distributedAmperes)} من ${Formatters.formatMoney(capacityKva)}",
+                    fontWeight = FontWeight.SemiBold
+                )
             }
-        },
-        modifier = Modifier.clickable(onClick = onOpen)
-    )
+            Spacer(modifier = Modifier.height(6.dp))
+            LinearProgressIndicator(
+                progress = { progress },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(8.dp),
+                color = if (isOverCapacity) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+            )
+            if (isOverCapacity) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    "تحذير: الأمبيرات الموزّعة تتجاوز سعة المولد",
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall
+                )
+            }
+        }
+    }
 }
 
 private fun formatPrice(value: Double): String = Formatters.formatMoney(value)
