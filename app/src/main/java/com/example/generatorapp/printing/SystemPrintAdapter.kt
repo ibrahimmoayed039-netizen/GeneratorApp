@@ -62,11 +62,22 @@ class SystemPrintAdapter(
             isFakeBoldText = true
             textAlign = Paint.Align.CENTER
         }
-        val textPaint = Paint().apply {
-            textSize = 14f
+        val labelPaint = Paint().apply {
+            textSize = 13f
             textAlign = Paint.Align.RIGHT
+            color = android.graphics.Color.DKGRAY
         }
+        val valuePaint = Paint().apply {
+            textSize = 14f
+            textAlign = Paint.Align.LEFT
+        }
+        val totalLabelPaint = Paint(labelPaint).apply { textSize = 15f }
+        val totalValuePaint = Paint(valuePaint).apply { textSize = 20f; isFakeBoldText = true }
+        val dividerPaint = Paint().apply { strokeWidth = 1f; color = android.graphics.Color.LTGRAY }
+        val centerPaint = Paint().apply { textSize = 13f; textAlign = Paint.Align.CENTER }
 
+        val leftX = 30f
+        val rightX = pageInfo.pageWidth - 30f
         var y = 40f
 
         receipt.logo?.let { logoBitmap ->
@@ -81,12 +92,41 @@ class SystemPrintAdapter(
         }
 
         canvas.drawText(receipt.shopName, pageInfo.pageWidth / 2f, y, titlePaint)
-        y += 30f
+        y += 26f
+        canvas.drawText("وصل دفع", pageInfo.pageWidth / 2f, y, centerPaint)
+        y += 16f
+        canvas.drawLine(leftX, y, rightX, y, dividerPaint)
+        y += 24f
 
-        val rightX = pageInfo.pageWidth - 30f
-        for (line in receipt.toLines().drop(1)) {
-            canvas.drawText(line, rightX, y, textPaint)
-            y += 24f
+        // كل حقل يُرسم في عمودين: التسمية عند الحافة اليمنى، والقيمة عند الحافة اليسرى —
+        // فتصطف كل القيم عموديًا في عمود واحد كفاتورة حقيقية بدل سطر نصي ملتصق
+        for (line in receipt.toReceiptLines()) {
+            when (line) {
+                is com.example.generatorapp.printing.ReceiptLine.Field -> {
+                    canvas.drawText("${line.label}:", rightX, y, labelPaint)
+                    canvas.drawText(line.value, leftX, y, valuePaint)
+                    y += 26f
+                }
+                is com.example.generatorapp.printing.ReceiptLine.Divider -> {
+                    canvas.drawLine(leftX, y, rightX, y, dividerPaint)
+                    y += 20f
+                }
+                is com.example.generatorapp.printing.ReceiptLine.Total -> {
+                    y += 6f
+                    canvas.drawText("${line.label}:", rightX, y, totalLabelPaint)
+                    canvas.drawText(line.value, leftX, y, totalValuePaint)
+                    y += 32f
+                }
+                is com.example.generatorapp.printing.ReceiptLine.Note -> {
+                    canvas.drawText(line.text, rightX, y, labelPaint)
+                    y += 22f
+                }
+                is com.example.generatorapp.printing.ReceiptLine.Footer -> {
+                    canvas.drawText(line.text, pageInfo.pageWidth / 2f, y, centerPaint)
+                    y += 22f
+                }
+                else -> Unit // Header/Badge سبق رسمهما أعلى الصفحة
+            }
         }
 
         document.finishPage(page)

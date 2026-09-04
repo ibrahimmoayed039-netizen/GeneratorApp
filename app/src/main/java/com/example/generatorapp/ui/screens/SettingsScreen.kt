@@ -14,6 +14,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
@@ -90,6 +91,41 @@ fun SettingsScreen(onBack: () -> Unit) {
         maintenanceNotificationsEnabled = infos.any { it.state == WorkInfo.State.ENQUEUED || it.state == WorkInfo.State.RUNNING }
     }
 
+    // ---------- ربط الطابعة الحرارية (قائمة بلوتوث + اتصال دائم) ----------
+    var connectedPrinterName by remember { mutableStateOf<String?>(null) }
+    var connectedPrinterAddress by remember { mutableStateOf<String?>(null) }
+    var isPrinterConnectedNow by remember { mutableStateOf(false) }
+    var printerConnectMessage by remember { mutableStateOf<String?>(null) }
+    var showPrinterConnectDialog by remember { mutableStateOf(false) }
+
+    fun refreshPrinterConnectionStatus() {
+        val saved = com.example.generatorapp.printing.findPreferredThermalPrinter(context)
+        connectedPrinterName = saved?.name
+        connectedPrinterAddress = saved?.address
+        isPrinterConnectedNow = saved != null &&
+            com.example.generatorapp.printing.BluetoothConnectionManager.connectedDeviceAddress == saved.address
+    }
+
+    LaunchedEffect(Unit) { refreshPrinterConnectionStatus() }
+
+    fun connectAndSavePrinter(device: android.bluetooth.BluetoothDevice) {
+        showPrinterConnectDialog = false
+        com.example.generatorapp.printing.savePreferredPrinterAddress(context, device.address)
+        connectedPrinterName = device.name
+        connectedPrinterAddress = device.address
+        printerConnectMessage = "جارٍ الاتصال..."
+        scope.launch {
+            val connected = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+                com.example.generatorapp.printing.BluetoothConnectionManager.connectQuietly(device)
+            }
+            isPrinterConnectedNow = connected
+            printerConnectMessage = if (connected)
+                "تم ربط الطابعة \"${device.name ?: device.address}\" وستبقى متصلة دائمًا تلقائيًا في كل مرة تُفتح فيها هذه الطابعة والتطبيق"
+            else
+                "تم حفظ الطابعة، لكن تعذّر الاتصال بها الآن — تأكد أنها مفتوحة وقريبة"
+        }
+    }
+
     // ---------- تشخيص الطابعة الحرارية (اختبار جداول الحروف) ----------
     var charsetTestWidth by remember { mutableStateOf(32) } // 32 لـ58مم، 48 لـ80مم
     var charsetTestInProgress by remember { mutableStateOf(false) }
@@ -100,12 +136,14 @@ fun SettingsScreen(onBack: () -> Unit) {
         showPrinterScan = false
         // احفظ هذا الجهاز كطابعة الافتراضية للاستخدام في كل أزرار "طباعة حرارية" بالتطبيق
         com.example.generatorapp.printing.savePreferredPrinterAddress(context, device.address)
+        refreshPrinterConnectionStatus()
         charsetTestInProgress = true
         charsetTestMessage = null
         scope.launch {
             try {
                 ReceiptPrintManager.printCharsetTestPage(device, charsetTestWidth)
                 charsetTestMessage = "تم حفظ الطابعة كطابعة افتراضية، وتم إرسال صفحة اختبار جداول الحروف لها"
+                refreshPrinterConnectionStatus()
             } catch (e: Exception) {
                 charsetTestMessage = e.message ?: "فشل الاتصال بالطابعة"
             } finally {
@@ -116,17 +154,21 @@ fun SettingsScreen(onBack: () -> Unit) {
 
     // صلاحيات البحث الفعلي عن أجهزة قريبة: BLUETOOTH_SCAN + BLUETOOTH_CONNECT بدءًا من أندرويد 12،
     // أو ACCESS_FINE_LOCATION فيما قبل ذلك (شرط أساسي لاكتشاف البلوتوث الكلاسيكي على أندرويد القديم)
+    // pendingScanTarget يحدد أي حوار يُفتح بعد منح الصلاحية: قائمة الربط أم اختبار جداول الحروف
+    var pendingScanTarget by remember { mutableStateOf("connect") }
     val requestScanPermissions = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         if (results.values.all { it }) {
-            showPrinterScan = true
+            if (pendingScanTarget == "connect") showPrinterConnectDialog = true else showPrinterScan = true
         } else {
-            charsetTestMessage = "لازم تسمح بصلاحيات البلوتوث والموقع للبحث عن طابعات قريبة"
+            val msg = "لازم تسمح بصلاحيات البلوتوث والموقع للبحث عن طابعات قريبة"
+            if (pendingScanTarget == "connect") printerConnectMessage = msg else charsetTestMessage = msg
         }
     }
 
-    fun openPrinterScan() {
+    fun requestScanPermissionsFor(target: String) {
+        pendingScanTarget = target
         val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
         } else {
@@ -137,11 +179,13 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
 
         if (missing.isEmpty()) {
-            showPrinterScan = true
+            if (target == "connect") showPrinterConnectDialog = true else showPrinterScan = true
         } else {
             requestScanPermissions.launch(missing.toTypedArray())
         }
     }
+
+    fun openPrinterScan() = requestScanPermissionsFor("charsetTest")
 
     // ---------- النسخ الاحتياطي ----------
     var autoBackupEnabled by remember { mutableStateOf(false) }
@@ -274,6 +318,66 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
 
             message?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("ربط الطابعة الحرارية", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "اختر طابعتك من قائمة أجهزة البلوتوث القريبة مرة واحدة فقط — يحفظها التطبيق " +
+                    "ويعيد الاتصال بها تلقائيًا في كل مرة (عند فتح التطبيق أو الطباعة) طالما " +
+                    "البلوتوث مفعّل والطابعة بالنطاق، دون الحاجة لإعادة اختيارها كل مرة.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Surface(
+                color = if (isPrinterConnectedNow)
+                    MaterialTheme.colorScheme.primary.copy(alpha = 0.1f)
+                else
+                    MaterialTheme.colorScheme.surfaceVariant,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        Icons.Default.Bluetooth,
+                        contentDescription = null,
+                        tint = if (isPrinterConnectedNow) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.width(10.dp))
+                    Column {
+                        Text(
+                            connectedPrinterName?.let { "الطابعة المحفوظة: $it" } ?: "لا توجد طابعة محفوظة بعد",
+                            fontWeight = FontWeight.SemiBold
+                        )
+                        if (connectedPrinterAddress != null) {
+                            Text(
+                                if (isPrinterConnectedNow) "متصلة الآن ✅ — ستبقى متصلة دائمًا"
+                                else "غير متصلة حاليًا — ستتم إعادة المحاولة تلقائيًا عند الطباعة",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+            }
+
+            Button(
+                onClick = { requestScanPermissionsFor("connect") },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Icon(Icons.Default.Bluetooth, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(6.dp))
+                Text(if (connectedPrinterAddress == null) "عرض قائمة البلوتوث واختيار الطابعة" else "تغيير الطابعة المرتبطة")
+            }
+
+            printerConnectMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary)
             }
 
@@ -712,6 +816,13 @@ fun SettingsScreen(onBack: () -> Unit) {
         PrinterDiscoveryDialog(
             onDismiss = { showPrinterScan = false },
             onDeviceSelected = { device -> runCharsetTest(device) }
+        )
+    }
+
+    if (showPrinterConnectDialog) {
+        PrinterDiscoveryDialog(
+            onDismiss = { showPrinterConnectDialog = false },
+            onDeviceSelected = { device -> connectAndSavePrinter(device) }
         )
     }
 }

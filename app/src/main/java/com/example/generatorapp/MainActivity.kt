@@ -11,8 +11,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
+import androidx.lifecycle.lifecycleScope
+import com.example.generatorapp.printing.BluetoothConnectionManager
+import com.example.generatorapp.printing.findPreferredThermalPrinter
 import com.example.generatorapp.ui.navigation.AppNavigation
 import com.example.generatorapp.ui.theme.GeneratorAppTheme
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
@@ -33,12 +38,35 @@ class MainActivity : ComponentActivity() {
             requestNotificationPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
         }
 
+        reconnectSavedPrinterQuietly()
+
         setContent {
             GeneratorAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
                     AppNavigation()
                 }
             }
+        }
+    }
+
+    /**
+     * يعيد الاتصال تلقائيًا بالطابعة الحرارية المحفوظة (إن وُجدت) فور فتح التطبيق، بدل
+     * انتظار أول عملية طباعة — فتبدو الطابعة "متصلة دائمًا" من لحظة فتح التطبيق. لا يفعل
+     * شيئًا إن لم تكن هناك طابعة محفوظة بعد، أو إن لم تُمنح صلاحية BLUETOOTH_CONNECT بعد
+     * (ستُطلب لاحقًا من شاشة الإعدادات عند اختيار الطابعة لأول مرة).
+     */
+    private fun reconnectSavedPrinterQuietly() {
+        val hasBluetoothPermission = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            ContextCompat.checkSelfPermission(this, Manifest.permission.BLUETOOTH_CONNECT) ==
+                PackageManager.PERMISSION_GRANTED
+        } else {
+            true
+        }
+        if (!hasBluetoothPermission) return
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            val device = findPreferredThermalPrinter(applicationContext) ?: return@launch
+            BluetoothConnectionManager.connectQuietly(device)
         }
     }
 }

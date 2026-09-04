@@ -128,11 +128,38 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
             output.write(LINE_FEED)
         }
 
-        writeArabicLine(output, receipt.shopName, bold = true, alignment = Layout.Alignment.ALIGN_CENTER)
-        writeArabicLine(output, "=".repeat(paperWidthChars), alignment = Layout.Alignment.ALIGN_CENTER)
+        val printerWidthDots = if (paperWidthChars >= 48) 576 else 384
 
-        for (line in receipt.toLines().drop(1)) {
-            writeArabicLine(output, line, alignment = Layout.Alignment.ALIGN_OPPOSITE)
+        for (line in receipt.toReceiptLines()) {
+            when (line) {
+                is ReceiptLine.Header ->
+                    writeArabicLine(output, line.text, bold = true, alignment = Layout.Alignment.ALIGN_CENTER)
+
+                is ReceiptLine.Badge ->
+                    writeArabicLine(output, line.text, alignment = Layout.Alignment.ALIGN_CENTER)
+
+                is ReceiptLine.Divider -> {
+                    val char = if (line.double) "=" else "-"
+                    output.write(ALIGN_CENTER)
+                    output.write(char.repeat(paperWidthChars).toByteArray(Charsets.US_ASCII))
+                    output.write(LINE_FEED)
+                }
+
+                is ReceiptLine.Field ->
+                    writeFieldLine(output, line.label, line.value, printerWidthDots)
+
+                is ReceiptLine.Total -> {
+                    output.write(LINE_FEED)
+                    writeFieldLine(output, line.label, line.value, printerWidthDots, emphasize = true)
+                    output.write(LINE_FEED)
+                }
+
+                is ReceiptLine.Note ->
+                    writeArabicLine(output, line.text, alignment = Layout.Alignment.ALIGN_OPPOSITE)
+
+                is ReceiptLine.Footer ->
+                    writeArabicLine(output, line.text, alignment = Layout.Alignment.ALIGN_CENTER)
+            }
         }
 
         output.write(ALIGN_CENTER)
@@ -140,6 +167,82 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
         output.write(LINE_FEED)
         output.write(CUT_PAPER)
         output.flush()
+    }
+
+    /**
+     * يطبع حقل "تسمية: قيمة" في عمودين منفصلين على نفس السطر — التسمية عند الحافة اليمنى
+     * والقيمة عند الحافة اليسرى (تمامًا كصف [com.example.generatorapp.ui.components.ReceiptPreview]
+     * في معاينة الشاشة) — بدل سطر نصي واحد ملتصق، فتصطف كل القيم عموديًا في عمود واحد
+     * ويبدو الوصل كفاتورة حقيقية بدل نص متتابع. إن كانت التسمية والقيمة طويلتين لدرجة
+     * تمنع فصلهما بوضوح ضمن عرض الورق، يُرجع تلقائيًا لسطر واحد ملتصق (لتفادي التداخل).
+     */
+    private fun writeFieldLine(
+        output: OutputStream,
+        label: String,
+        value: String,
+        printerWidthDots: Int,
+        emphasize: Boolean = false
+    ) {
+        val bitmap = renderFieldLineBitmap(label, value, printerWidthDots, emphasize)
+        if (bitmap == null) {
+            // لا مساحة كافية لعمودين منفصلين — سطر ملتصق واحد كحل احتياطي آمن
+            writeArabicLine(output, "$label: $value", bold = emphasize, alignment = Layout.Alignment.ALIGN_OPPOSITE)
+            return
+        }
+        output.write(ALIGN_CENTER)
+        printRasterBitmap(output, bitmap)
+        output.write(LINE_FEED)
+    }
+
+    /** يرسم سطر "تسمية ... قيمة" بعمودين محاذاة يمين/يسار، أو null إن لم تتسع المساحة لفصلهما بوضوح */
+    private fun renderFieldLineBitmap(
+        label: String,
+        value: String,
+        widthDots: Int,
+        emphasize: Boolean
+    ): Bitmap? {
+        val baseSizePx = if (widthDots >= 576) 30f else 26f
+        val valueSizePx = if (emphasize) baseSizePx * 1.25f else baseSizePx
+        val labelSizePx = baseSizePx * 0.92f
+
+        val labelPaint = TextPaint().apply {
+            isAntiAlias = true
+            color = Color.BLACK
+            textSize = labelSizePx
+            textAlign = android.graphics.Paint.Align.RIGHT
+        }
+        val valuePaint = TextPaint().apply {
+            isAntiAlias = true
+            color = Color.BLACK
+            textSize = valueSizePx
+            isFakeBoldText = emphasize
+            textAlign = android.graphics.Paint.Align.LEFT
+        }
+
+        val labelText = "$label:"
+        val minGapDots = widthDots * 0.08f
+        val labelWidth = labelPaint.measureText(labelText)
+        val valueWidth = valuePaint.measureText(value)
+
+        // إن كان مجموع عرض التسمية + القيمة + هامش فاصل يتجاوز عرض الورق، لا مجال لعمودين
+        // واضحين بدون تداخل النصين — نرجع null ليستخدم المستدعي سطرًا ملتصقًا احتياطيًا
+        if (labelWidth + valueWidth + minGapDots > widthDots) return null
+
+        val labelHeight = labelPaint.descent() - labelPaint.ascent()
+        val valueHeight = valuePaint.descent() - valuePaint.ascent()
+        val height = maxOf(labelHeight, valueHeight).let { (it * 1.2f).toInt() }.coerceAtLeast(1)
+
+        val bitmap = Bitmap.createBitmap(widthDots, height, Bitmap.Config.ARGB_8888)
+        val canvas = Canvas(bitmap)
+        canvas.drawColor(Color.WHITE)
+
+        val labelBaseline = height / 2f - (labelPaint.ascent() + labelPaint.descent()) / 2f
+        val valueBaseline = height / 2f - (valuePaint.ascent() + valuePaint.descent()) / 2f
+
+        canvas.drawText(labelText, widthDots.toFloat(), labelBaseline, labelPaint)
+        canvas.drawText(value, 0f, valueBaseline, valuePaint)
+
+        return bitmap
     }
 
     /**
