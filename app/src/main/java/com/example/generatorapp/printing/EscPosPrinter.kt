@@ -147,6 +147,11 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
                     output.write(ALIGN_CENTER)
                     printRasterBitmap(output, framed)
                     output.write(LINE_FEED)
+
+                    // رقم الهاتف (إن وُجد) يُطبع مباشرة أسفل ترويسة اسم المحل، بخط عادي غير مؤطّر
+                    if (line.phone.isNotBlank()) {
+                        writeArabicLine(output, "هاتف: ${line.phone}", bold = false, alignment = Layout.Alignment.ALIGN_CENTER)
+                    }
                 }
 
                 is ReceiptLine.Badge ->

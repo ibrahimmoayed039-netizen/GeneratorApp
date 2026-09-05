@@ -1,6 +1,7 @@
 package com.example.generatorapp.ui.screens
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
 import android.net.Uri
@@ -9,6 +10,7 @@ import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -16,6 +18,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Bluetooth
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.LocationOn
+import androidx.compose.material.icons.filled.Person
+import androidx.compose.material.icons.filled.Phone
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.*
@@ -25,6 +31,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
@@ -42,6 +50,7 @@ import com.example.generatorapp.notifications.MessageSettings
 import com.example.generatorapp.notifications.NotificationHelper
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptPrintManager
+import com.example.generatorapp.printing.ShopInfoManager
 import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.ui.components.PrinterDiscoveryDialog
@@ -57,11 +66,16 @@ private val MAINTENANCE_WORK_NAME = com.example.generatorapp.MAINTENANCE_WORK_NA
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit, onOpenAbout: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var logoBitmap by remember { mutableStateOf<Bitmap?>(LogoManager.loadLogo(context)) }
     var message by remember { mutableStateOf<String?>(null) }
+
+    // ---------- اسم المحل/المولدة ورقم الهاتف (يظهران أعلى كل وصل بجانب الشعار) ----------
+    var shopName by remember { mutableStateOf(ShopInfoManager.getShopName(context)) }
+    var shopPhone by remember { mutableStateOf(ShopInfoManager.getShopPhone(context)) }
+    var shopInfoMessage by remember { mutableStateOf<String?>(null) }
     var notificationsEnabled by remember { mutableStateOf(false) }
     var maintenanceNotificationsEnabled by remember { mutableStateOf(false) }
 
@@ -318,6 +332,49 @@ fun SettingsScreen(onBack: () -> Unit) {
             }
 
             message?.let {
+                Text(it, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("اسم المولدة ورقم الهاتف", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "يظهران أعلى كل وصل بجانب الشعار، مباشرة تحته",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            OutlinedTextField(
+                value = shopName,
+                onValueChange = { shopName = it },
+                label = { Text("اسم المولدة / المحل") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true
+            )
+
+            OutlinedTextField(
+                value = shopPhone,
+                onValueChange = { shopPhone = it },
+                label = { Text("رقم الهاتف") },
+                modifier = Modifier.fillMaxWidth(),
+                singleLine = true,
+                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Phone
+                )
+            )
+
+            Button(
+                onClick = {
+                    val finalName = shopName.trim().ifBlank { ShopInfoManager.DEFAULT_SHOP_NAME }
+                    ShopInfoManager.setShopName(context, finalName)
+                    ShopInfoManager.setShopPhone(context, shopPhone.trim())
+                    shopName = finalName
+                    shopInfoMessage = "تم حفظ اسم المولدة ورقم الهاتف"
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("حفظ اسم المولدة والهاتف") }
+
+            shopInfoMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary)
             }
 
@@ -734,7 +791,8 @@ fun SettingsScreen(onBack: () -> Unit) {
                         try {
                             val file = BackupManager.createBackup(context)
                             refreshBackups()
-                            backupMessage = "تم إنشاء نسخة احتياطية: ${BackupManager.displayName(file)}"
+                            backupMessage = "تم إنشاء نسخة احتياطية: ${BackupManager.displayName(file)} " +
+                                "(محفوظة أيضًا في ${BackupManager.downloadsFolderLabel()})"
                         } catch (e: Exception) {
                             backupMessage = "فشل إنشاء النسخة الاحتياطية: ${e.message ?: ""}"
                         } finally {
@@ -764,6 +822,14 @@ fun SettingsScreen(onBack: () -> Unit) {
                             file = file,
                             onRestore = { confirmRestoreFile = file },
                             onShare = { BackupManager.shareBackup(context, file) },
+                            onSaveToDownloads = {
+                                val saved = BackupManager.copyToDownloads(context, file)
+                                backupMessage = if (saved) {
+                                    "تم الحفظ في ${BackupManager.downloadsFolderLabel()}"
+                                } else {
+                                    "تعذّر الحفظ في التنزيلات على هذا الجهاز"
+                                }
+                            },
                             onDelete = {
                                 BackupManager.deleteBackup(file)
                                 refreshBackups()
@@ -778,6 +844,13 @@ fun SettingsScreen(onBack: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            OutlinedButton(
+                onClick = onOpenAbout,
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("حول البرنامج") }
         }
     }
 
@@ -788,7 +861,7 @@ fun SettingsScreen(onBack: () -> Unit) {
             text = {
                 Text(
                     "سيتم استبدال كل البيانات الحالية بنسخة ${BackupManager.displayName(file)}. " +
-                        "هذا الإجراء لا يمكن التراجع عنه، وسيُغلق التطبيق تلقائيًا لإعادة تحميل البيانات."
+                        "هذا الإجراء لا يمكن التراجع عنه، وسيُعاد تشغيل التطبيق تلقائيًا لتحميل البيانات المستعادة."
                 )
             },
             confirmButton = {
@@ -796,11 +869,18 @@ fun SettingsScreen(onBack: () -> Unit) {
                     val success = BackupManager.restoreBackup(context, file)
                     confirmRestoreFile = null
                     if (success) {
-                        Toast.makeText(context, "تمت الاستعادة، يُرجى إعادة فتح التطبيق", Toast.LENGTH_LONG).show()
-                        (context as? android.app.Activity)?.let {
-                            it.finishAffinity()
-                            android.os.Process.killProcess(android.os.Process.myPid())
+                        Toast.makeText(context, "تمت الاستعادة، جارٍ إعادة تشغيل التطبيق...", Toast.LENGTH_SHORT).show()
+                        // نعيد فتح التطبيق تلقائيًا بدل تركه مغلقًا (المستخدم كان يظن أن هذا خروج/تعطّل):
+                        // نُطلق نشاطًا جديدًا بمهمة نظيفة تمامًا، ثم نُنهي العملية الحالية بأمان.
+                        val restartIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+                        restartIntent?.addFlags(
+                            Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                        )
+                        if (restartIntent != null) {
+                            context.startActivity(restartIntent)
                         }
+                        (context as? android.app.Activity)?.finishAffinity()
+                        android.os.Process.killProcess(android.os.Process.myPid())
                     } else {
                         backupMessage = "فشلت عملية الاستعادة"
                     }
@@ -827,12 +907,13 @@ fun SettingsScreen(onBack: () -> Unit) {
     }
 }
 
-/** صف يعرض نسخة احتياطية واحدة مع أزرار استعادة/مشاركة/حذف */
+/** صف يعرض نسخة احتياطية واحدة مع أزرار استعادة/مشاركة/حفظ بالتنزيلات/حذف */
 @Composable
 private fun BackupRow(
     file: File,
     onRestore: () -> Unit,
     onShare: () -> Unit,
+    onSaveToDownloads: () -> Unit,
     onDelete: () -> Unit
 ) {
     Card(modifier = Modifier.fillMaxWidth()) {
@@ -855,6 +936,14 @@ private fun BackupRow(
                 IconButton(onClick = onDelete) {
                     Icon(Icons.Default.Delete, contentDescription = "حذف", tint = MaterialTheme.colorScheme.error)
                 }
+            }
+            TextButton(
+                onClick = onSaveToDownloads,
+                modifier = Modifier.fillMaxWidth().padding(top = 2.dp)
+            ) {
+                Icon(Icons.Default.Download, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("حفظ في التنزيلات (يمكن الوصول لها من تطبيق الملفات)")
             }
         }
     }

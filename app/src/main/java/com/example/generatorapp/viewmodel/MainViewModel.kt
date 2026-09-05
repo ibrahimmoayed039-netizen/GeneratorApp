@@ -72,7 +72,9 @@ data class SubscriberPriceInfo(
 data class PaymentStatusInfo(
     val subscriber: Subscriber,
     val paid: Boolean,
-    val lastInvoiceThisMonthMillis: Long?
+    val lastInvoiceThisMonthMillis: Long?,
+    /** الفاتورة الأخيرة المسجّلة هذا الشهر (إن وُجدت) — تُستخدم لإعادة طباعة نفس الوصل دون إنشاء فاتورة جديدة */
+    val lastInvoice: Invoice? = null
 )
 
 /** ملخص تقرير الأرباح لفترة معيّنة */
@@ -339,7 +341,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 PaymentStatusInfo(
                     subscriber = sub,
                     paid = invoicesThisMonth.isNotEmpty(),
-                    lastInvoiceThisMonthMillis = lastInvoice?.date
+                    lastInvoiceThisMonthMillis = lastInvoice?.date,
+                    lastInvoice = lastInvoice
                 )
             }
             onResult(statusList)

@@ -84,6 +84,13 @@ class SystemPrintAdapter(
             color = android.graphics.Color.WHITE
             isAntiAlias = true
         }
+        val shopPhonePaint = Paint().apply {
+            textSize = 11.5f
+            textAlign = Paint.Align.CENTER
+            color = android.graphics.Color.WHITE
+            alpha = 210
+            isAntiAlias = true
+        }
         val labelPaint = Paint().apply {
             textSize = 13f
             textAlign = Paint.Align.RIGHT
@@ -129,8 +136,9 @@ class SystemPrintAdapter(
             color = borderColor
         }
 
-        // 1) الشريط العلوي الملوّن باسم المحل
-        val headerHeight = 92f
+        // 1) الشريط العلوي الملوّن باسم المحل (يزداد ارتفاعه قليلًا إذا وُجد رقم هاتف ليتسع للسطرين)
+        val hasShopPhone = receipt.shopPhone.isNotBlank()
+        val headerHeight = if (hasShopPhone) 108f else 92f
         canvas.drawRect(0f, 0f, pageInfo.pageWidth.toFloat(), headerHeight, Paint().apply { color = headerColor })
 
         var logoBottom = 0f
@@ -145,12 +153,13 @@ class SystemPrintAdapter(
             logoBottom = 14f + drawHeight
         }
 
-        canvas.drawText(
-            receipt.shopName,
-            pageInfo.pageWidth / 2f,
-            if (logoBottom > 0f) logoBottom + 22f else headerHeight / 2f + 7f,
-            titlePaint
-        )
+        val shopNameY = if (logoBottom > 0f) logoBottom + 22f else headerHeight / 2f + (if (hasShopPhone) 1f else 7f)
+        canvas.drawText(receipt.shopName, pageInfo.pageWidth / 2f, shopNameY, titlePaint)
+
+        // رقم هاتف المحل/المولدة (اختياري) — يُرسم مباشرة أسفل اسم المحل داخل نفس الشريط العلوي
+        if (hasShopPhone) {
+            canvas.drawText(receipt.shopPhone, pageInfo.pageWidth / 2f, shopNameY + 16f, shopPhonePaint)
+        }
 
         // 2) شارة "وصل دفع" ذهبية تتوسّط حافة الشريط السفلية (نصفها بالشريط ونصفها تحته)
         val badgeWidth = 110f

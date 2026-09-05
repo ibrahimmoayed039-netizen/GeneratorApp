@@ -23,6 +23,7 @@ import com.example.generatorapp.data.entities.SubscriberType
 import com.example.generatorapp.printing.LogoManager
 import com.example.generatorapp.printing.ReceiptData
 import com.example.generatorapp.printing.ReceiptPrintManager
+import com.example.generatorapp.printing.ShopInfoManager
 import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.ui.components.PinDialog
@@ -352,6 +353,31 @@ fun <T> DropdownSelector(
 }
 
 /**
+ * يبني بيانات الوصل (ReceiptData) من فاتورة موجودة مسبقًا بدون إنشاء فاتورة جديدة
+ * ولا تسجيل دفعة جديدة — تُستخدم لإعادة طباعة وصل دُفع بالفعل (مثلًا عند الضغط على
+ * عميل "مدفوع" في شاشة حالة الدفع الشهرية للتأكد من أنه دفع فعلًا).
+ */
+fun buildReceiptFromExistingInvoice(
+    invoice: com.example.generatorapp.data.entities.Invoice,
+    subscriber: Subscriber,
+    context: android.content.Context
+): ReceiptData {
+    return ReceiptData(
+        shopName = ShopInfoManager.getShopName(context),
+        shopPhone = ShopInfoManager.getShopPhone(context),
+        subscriberName = invoice.subscriberName,
+        meterNumber = subscriber.meterNumber,
+        generatorName = invoice.generatorName,
+        amperes = invoice.amperes,
+        pricePerAmpere = invoice.pricePerAmpere,
+        amount = invoice.amount,
+        dateMillis = invoice.date,
+        note = invoice.note,
+        logo = LogoManager.loadLogo(context)
+    )
+}
+
+/**
  * ينشئ فاتورة فعليًا بقاعدة البيانات ويبني منها بيانات الوصل (ReceiptData) الجاهزة
  * للمعاينة والطباعة. دالة مشتركة تُستخدم من شاشة الفواتير وشاشة حالة الدفع الشهرية
  * حتى لا يتكرر نفس المنطق مرتين.
@@ -382,6 +408,8 @@ fun createInvoiceAndBuildReceipt(
     ) { invoice ->
         onReceiptReady(
             ReceiptData(
+                shopName = ShopInfoManager.getShopName(context),
+                shopPhone = ShopInfoManager.getShopPhone(context),
                 subscriberName = invoice.subscriberName,
                 meterNumber = subscriber.meterNumber,
                 generatorName = invoice.generatorName,

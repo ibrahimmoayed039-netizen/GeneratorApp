@@ -60,6 +60,15 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             textAlign = TextAlign.Center
         )
 
+        if (receipt.shopPhone.isNotBlank()) {
+            Text(
+                text = "هاتف: ${receipt.shopPhone}",
+                fontSize = 13.sp,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                textAlign = TextAlign.Center
+            )
+        }
+
         Spacer(modifier = Modifier.height(6.dp))
 
         Surface(

@@ -6,4 +6,6 @@
     <color name="amber_accent">#E8A33D</color>
     <color name="amber_accent_dark">#C8871F</color>
     <color name="background_light">#F6F3EC</color>
+    <!-- خلفية أيقونة التطبيق التكيّفية (Adaptive Icon) — نفس كحلي شعار "Golden Track" -->
+    <color name="ic_launcher_background">#14243C</color>
 </resources>

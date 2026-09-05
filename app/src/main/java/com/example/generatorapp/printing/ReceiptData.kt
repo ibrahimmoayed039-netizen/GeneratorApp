@@ -14,6 +14,8 @@ import java.util.Locale
  */
 data class ReceiptData(
     val shopName: String = "مدير المولدات",
+    /** رقم هاتف المحل/المولدة (اختياري) — يظهر أسفل اسم المحل أعلى الوصل بجانب الشعار */
+    val shopPhone: String = "",
     val subscriberName: String,
     val meterNumber: String = "",
     val generatorName: String,
@@ -31,6 +33,7 @@ data class ReceiptData(
     /** أسطر الوصل كنص عادي مسطّح — تُستخدم فقط عند الحاجة لنص خام (مثل رسالة مشاركة) */
     fun toLines(): List<String> = listOf(
         shopName,
+        if (shopPhone.isNotBlank()) "هاتف: $shopPhone" else "",
         "----------------------------",
         "وصل دفع",
         "التاريخ: ${formattedDate()}",
@@ -53,7 +56,7 @@ data class ReceiptData(
      * فيصبح شكل الوصل أقرب لفاتورة احترافية حقيقية بدل نص عادي متلاحق.
      */
     fun toReceiptLines(): List<ReceiptLine> = buildList {
-        add(ReceiptLine.Header(shopName))
+        add(ReceiptLine.Header(shopName, shopPhone))
         add(ReceiptLine.Badge("وصل دفع"))
         add(ReceiptLine.Divider(double = true))
         add(ReceiptLine.Field("التاريخ", formattedDate()))
@@ -75,7 +78,7 @@ data class ReceiptData(
  * محوّل طباعة (حراري أو نظامي) كيف يرسمه بالشكل المناسب له بدل التعامل مع نص مسطّح.
  */
 sealed class ReceiptLine {
-    data class Header(val text: String) : ReceiptLine()
+    data class Header(val text: String, val phone: String = "") : ReceiptLine()
     data class Badge(val text: String) : ReceiptLine()
     data class Field(val label: String, val value: String) : ReceiptLine()
     data class Total(val label: String, val value: String) : ReceiptLine()

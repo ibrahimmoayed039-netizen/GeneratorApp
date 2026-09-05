@@ -11,11 +11,15 @@
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- لإرسال رسائل SMS تلقائية لتذكير المتأخرين ورسالة سعر الأمبير الشهري -->
     <uses-permission android:name="android.permission.SEND_SMS" />
+    <!-- لنسخ ملفات النسخ الاحتياطي لمجلد "التنزيلات" العام على أندرويد 9 وأقدم فقط
+         (من أندرويد 10 فما فوق تُستخدم MediaStore التي لا تحتاج أي صلاحية) -->
+    <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
     <application
         android:name=".GeneratorApp"
         android:allowBackup="true"
-        android:icon="@drawable/ic_launcher_foreground"
+        android:icon="@mipmap/ic_launcher"
+        android:roundIcon="@mipmap/ic_launcher_round"
         android:label="@string/app_name"
         android:supportsRtl="true"
         android:theme="@style/Theme.GeneratorApp"

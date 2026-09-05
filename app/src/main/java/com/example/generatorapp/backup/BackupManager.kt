@@ -1,7 +1,11 @@
 package com.example.generatorapp.backup
 
+import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.Environment
+import android.provider.MediaStore
 import androidx.core.content.FileProvider
 import com.example.generatorapp.data.AppDatabase
 import java.io.File
@@ -24,6 +28,8 @@ object BackupManager {
     private const val DB_NAME = "generator_app.db"
     private const val BACKUP_DIR = "backups"
     private const val MAX_BACKUPS = 10
+    /** اسم المجلد الفرعي داخل "التنزيلات" العامة بحيث يقدر المستخدم يوصل لنسخه بأي تطبيق ملفات */
+    private const val DOWNLOADS_SUBFOLDER = "GeneratorApp_Backups"
     private val fileNameFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
     private val displayFormat = SimpleDateFormat("dd/MM/yyyy - hh:mm a", Locale("ar"))
 
@@ -47,6 +53,12 @@ object BackupManager {
         dbFile.copyTo(destFile, overwrite = true)
 
         cleanupOldBackups(context)
+
+        // ننسخها أيضًا لمجلد "التنزيلات" العام تلقائيًا حتى يقدر المستخدم يوصلها من أي
+        // تطبيق ملفات عادي على الجهاز (تخزين التطبيق الخاص مخفي عن أغلب مديري الملفات
+        // من أندرويد 11 فما فوق). فشل هذه الخطوة لا يوقف عملية النسخ الاحتياطي نفسها.
+        copyToDownloads(context, destFile)
+
         return destFile
     }
 
@@ -85,6 +97,55 @@ object BackupManager {
     }
 
     fun deleteBackup(file: File): Boolean = file.delete()
+
+    /**
+     * ينسخ نسخة احتياطية موجودة (من تخزين التطبيق الخاص) إلى مجلد فرعي داخل "التنزيلات"
+     * العامة على الجهاز (Download/GeneratorApp_Backups)، بحيث يقدر المستخدم يوصلها ويشوفها
+     * من أي تطبيق ملفات عادي (مثل "الملفات" أو "My Files")، أو ينقلها بسهولة لجهاز آخر.
+     * على أندرويد 10 فما فوق تُستخدم MediaStore (لا تحتاج أي صلاحية)، وعلى الإصدارات الأقدم
+     * تُنسخ مباشرة لمجلد التنزيلات العام (يحتاج صلاحية WRITE_EXTERNAL_STORAGE وقت التشغيل).
+     */
+    fun copyToDownloads(context: Context, backupFile: File): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                val resolver = context.contentResolver
+                val existing = resolver.query(
+                    MediaStore.Downloads.EXTERNAL_CONTENT_URI,
+                    arrayOf(MediaStore.MediaColumns._ID),
+                    "${MediaStore.MediaColumns.RELATIVE_PATH} = ? AND ${MediaStore.MediaColumns.DISPLAY_NAME} = ?",
+                    arrayOf("Download/$DOWNLOADS_SUBFOLDER/", backupFile.name),
+                    null
+                )
+                val alreadyExists = existing?.use { it.count > 0 } ?: false
+                if (alreadyExists) return true // نفس النسخة محفوظة أصلاً بالتنزيلات
+
+                val values = ContentValues().apply {
+                    put(MediaStore.MediaColumns.DISPLAY_NAME, backupFile.name)
+                    put(MediaStore.MediaColumns.MIME_TYPE, "application/octet-stream")
+                    put(MediaStore.MediaColumns.RELATIVE_PATH, "Download/$DOWNLOADS_SUBFOLDER")
+                }
+                val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, values) ?: return false
+                resolver.openOutputStream(uri)?.use { out ->
+                    backupFile.inputStream().use { input -> input.copyTo(out) }
+                } ?: return false
+                true
+            } else {
+                @Suppress("DEPRECATION")
+                val downloadsDir = File(
+                    Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS),
+                    DOWNLOADS_SUBFOLDER
+                )
+                if (!downloadsDir.exists()) downloadsDir.mkdirs()
+                backupFile.copyTo(File(downloadsDir, backupFile.name), overwrite = true)
+                true
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    /** المسار المعروض للمستخدم لمكان حفظ النسخ داخل التنزيلات، ليظهر برسالة إرشادية بالواجهة */
+    fun downloadsFolderLabel(): String = "التنزيلات/$DOWNLOADS_SUBFOLDER"
 
     /** يفتح قائمة "مشاركة" النظام لإرسال ملف النسخة الاحتياطية لأي تطبيق آخر (لحفظها خارج الجهاز) */
     fun shareBackup(context: Context, file: File) {

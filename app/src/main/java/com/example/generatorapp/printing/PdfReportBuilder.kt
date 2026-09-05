@@ -52,6 +52,8 @@ class PdfReportBuilder(
     private val labelPaint = TextPaint().apply { color = TEXT_DARK; textSize = 10.5f; isFakeBoldText = true; isAntiAlias = true }
     private val sectionPaint = TextPaint().apply { color = TEXT_DARK; textSize = 13f; isFakeBoldText = true; isAntiAlias = true }
     private val mutedPaint = TextPaint().apply { color = TEXT_MUTED; textSize = 9f; isAntiAlias = true }
+    private val shopNamePaint = TextPaint().apply { color = Color.WHITE; textSize = 11.5f; isFakeBoldText = true; isAntiAlias = true }
+    private val shopPhonePaint = TextPaint().apply { color = Color.WHITE; textSize = 9.5f; alpha = 210; isAntiAlias = true }
 
     init {
         startNewPage()
@@ -73,10 +75,20 @@ class PdfReportBuilder(
         val bandPaint = Paint().apply { color = PRIMARY }
         c.drawRect(0f, 0f, PAGE_WIDTH.toFloat(), HEADER_BAND_HEIGHT, bandPaint)
 
+        var logoTextX = MARGIN
         logo?.let { bmp ->
             val size = 56
             val scaled = Bitmap.createScaledBitmap(bmp, size, size, true)
             c.drawBitmap(scaled, MARGIN, (HEADER_BAND_HEIGHT - size) / 2, null)
+            logoTextX = MARGIN + size + 10f
+        }
+
+        // اسم المحل/المولدة ورقم الهاتف بجانب الشعار — نفس هوية المحل الظاهرة أعلى وصولات الدفع
+        val shopName = ShopInfoManager.getShopName(context)
+        val shopPhone = ShopInfoManager.getShopPhone(context)
+        text(c, shopName, logoTextX, (HEADER_BAND_HEIGHT / 2) - (if (shopPhone.isNotBlank()) 4f else -4f), shopNamePaint, Paint.Align.LEFT)
+        if (shopPhone.isNotBlank()) {
+            text(c, "هاتف: $shopPhone", logoTextX, (HEADER_BAND_HEIGHT / 2) + 12f, shopPhonePaint, Paint.Align.LEFT)
         }
 
         text(c, reportTitle, PAGE_WIDTH - MARGIN, 42f, titlePaint, Paint.Align.RIGHT)

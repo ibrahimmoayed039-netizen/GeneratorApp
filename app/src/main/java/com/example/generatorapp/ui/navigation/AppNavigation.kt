@@ -6,6 +6,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.example.generatorapp.ui.screens.AboutScreen
 import com.example.generatorapp.ui.screens.BillingScreen
 import com.example.generatorapp.ui.screens.ExpensesScreen
 import com.example.generatorapp.ui.screens.GeneratorDetailScreen
@@ -34,6 +35,7 @@ object Routes {
     const val PAYMENT_STATUS = "payment_status"
     const val MAINTENANCE_ALERTS = "maintenance_alerts"
     const val REMINDERS = "reminders"
+    const val ABOUT = "about"
 
     fun generatorDetail(generatorId: Long) = "generator_detail/$generatorId"
 }
@@ -78,7 +80,13 @@ fun AppNavigation() {
             BillingScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenAbout = { navController.navigate(Routes.ABOUT) }
+            )
+        }
+        composable(Routes.ABOUT) {
+            AboutScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.STATEMENT) {
             StatementScreen(onBack = { navController.popBackStack() })

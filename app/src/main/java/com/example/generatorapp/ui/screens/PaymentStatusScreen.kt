@@ -53,6 +53,7 @@ private val PaidGreen = Color(0xFF2F6B4F)
 fun PaymentStatusScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
     var statusList by remember { mutableStateOf<List<PaymentStatusInfo>?>(null) }
     var payingSubscriber by remember { mutableStateOf<Subscriber?>(null) }
+    var alreadyPaidInfo by remember { mutableStateOf<PaymentStatusInfo?>(null) }
 
     // فلترة حسب المنطقة/الحي — تسهّل على المُحصِّل الميداني رؤية عملاء منطقته فقط
     var selectedAreaFilter by remember { mutableStateOf<String?>(null) }
@@ -138,7 +139,18 @@ fun PaymentStatusScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Un
                         contentPadding = PaddingValues(horizontal = 16.dp, vertical = 4.dp)
                     ) {
                         items(visibleList) { info ->
-                            PaymentStatusRow(info, onClick = { payingSubscriber = info.subscriber })
+                            PaymentStatusRow(
+                                info,
+                                onClick = {
+                                    // العميل مدفوع هذا الشهر أصلًا: نعرض رسالة تأكيد + إعادة طباعة
+                                    // بدل السماح بتسجيل دفعة ثانية عن طريق الخطأ.
+                                    if (info.paid && info.lastInvoice != null) {
+                                        alreadyPaidInfo = info
+                                    } else {
+                                        payingSubscriber = info.subscriber
+                                    }
+                                }
+                            )
                             Spacer(modifier = Modifier.height(8.dp))
                         }
                     }
@@ -157,6 +169,142 @@ fun PaymentStatusScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Un
             onPaid = { refresh() }
         )
     }
+
+    alreadyPaidInfo?.let { info ->
+        AlreadyPaidDialog(
+            info = info,
+            onDismiss = { alreadyPaidInfo = null }
+        )
+    }
+}
+
+/**
+ * تُعرض عند الضغط على عميل دفع بالفعل هذا الشهر: تؤكد أنه مدفوع (بتاريخ الدفع)
+ * وتتيح إعادة طباعة نفس الوصل المسجَّل للتأكد، دون إنشاء فاتورة/دفعة جديدة.
+ */
+@Composable
+private fun AlreadyPaidDialog(info: PaymentStatusInfo, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val invoice = info.lastInvoice ?: return
+    val receipt = remember(invoice.id) {
+        buildReceiptFromExistingInvoice(invoice = invoice, subscriber = info.subscriber, context = context)
+    }
+    var thermalWidth by remember { mutableStateOf(32) }
+
+    fun printThermal() {
+        val device = com.example.generatorapp.printing.findPreferredThermalPrinter(context)
+        if (device == null) {
+            Toast.makeText(
+                context,
+                "ما فيه طابعة حرارية محفوظة. روح للإعدادات > فحص الطابعة، واختر طابعتك أول مرة.",
+                Toast.LENGTH_LONG
+            ).show()
+            return
+        }
+        scope.launch {
+            try {
+                ReceiptPrintManager.printViaThermal(device, receipt, thermalWidth)
+                Toast.makeText(context, "تم إرسال الوصل للطابعة", Toast.LENGTH_SHORT).show()
+            } catch (e: Exception) {
+                Toast.makeText(context, e.message ?: "فشل الاتصال بالطابعة", Toast.LENGTH_LONG).show()
+            }
+        }
+    }
+
+    var pendingThermalPrint by remember { mutableStateOf(false) }
+    val requestBluetoothPermissions = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestMultiplePermissions()
+    ) { results ->
+        val wasPending = pendingThermalPrint
+        pendingThermalPrint = false
+        if (results.values.all { it } && wasPending) {
+            printThermal()
+        } else if (wasPending) {
+            Toast.makeText(
+                context,
+                "لازم تسمح بصلاحية البلوتوث حتى تقدر تطبع على الطابعة الحرارية",
+                Toast.LENGTH_LONG
+            ).show()
+        }
+    }
+
+    fun requestThermalPrint() {
+        val requiredPermissions = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            listOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT)
+        } else {
+            emptyList()
+        }
+        val missing = requiredPermissions.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) {
+            printThermal()
+        } else {
+            pendingThermalPrint = true
+            requestBluetoothPermissions.launch(missing.toTypedArray())
+        }
+    }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("تم الدفع مسبقًا") },
+        text = {
+            Column(
+                modifier = Modifier
+                    .heightIn(max = 460.dp)
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                Surface(
+                    color = MaterialTheme.colorScheme.errorContainer,
+                    shape = MaterialTheme.shapes.small,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Text(
+                        "${info.subscriber.name} دفع بالفعل هذا الشهر بتاريخ " +
+                            DateUtils.formatDate(invoice.date) +
+                            ". يمكنك إعادة طباعة نفس الوصل بالأسفل للتأكد.",
+                        modifier = Modifier.padding(12.dp),
+                        color = MaterialTheme.colorScheme.onErrorContainer
+                    )
+                }
+                Card(modifier = Modifier.fillMaxWidth()) {
+                    ReceiptPreview(receipt = receipt, modifier = Modifier.fillMaxWidth())
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    FilterChip(
+                        selected = thermalWidth == 32,
+                        onClick = { thermalWidth = 32 },
+                        label = { Text("طابعة 58مم") }
+                    )
+                    FilterChip(
+                        selected = thermalWidth == 48,
+                        onClick = { thermalWidth = 48 },
+                        label = { Text("طابعة 80مم") }
+                    )
+                }
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    OutlinedButton(
+                        onClick = { ReceiptPrintManager.printViaSystem(context, receipt) },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("طباعة عادية") }
+
+                    Button(
+                        onClick = { requestThermalPrint() },
+                        modifier = Modifier.weight(1f)
+                    ) { Text("طباعة حرارية") }
+                }
+            }
+        },
+        confirmButton = {},
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text("إغلاق") }
+        }
+    )
 }
 
 @Composable
