@@ -21,12 +21,18 @@ data class ReceiptData(
     val generatorName: String,
     val amperes: Double,
     val pricePerAmpere: Double,
+    /** الخصم المطبّق على إجمالي هذا الوصل (اختياري، صفر = بدون خصم) */
+    val discount: Double = 0.0,
+    /** المبلغ الصافي المطلوب من المشترك بعد خصم "discount" من (عدد الأمبيرات × سعر الأمبير) */
     val amount: Double,
     val dateMillis: Long,
     val note: String = "",
     /** شعار المحل (اختياري) — يُحمَّل من LogoManager ويُستخدم في المعاينة والطباعتين */
     val logo: Bitmap? = null
 ) {
+    /** الإجمالي قبل الخصم = عدد الأمبيرات × سعر الأمبير (= amount + discount) */
+    fun subtotal(): Double = amount + discount
+
     fun formattedDate(): String =
         SimpleDateFormat("yyyy/MM/dd - hh:mm a", Locale("ar")).format(dateMillis)
 
@@ -43,6 +49,8 @@ data class ReceiptData(
         "عدد الأمبيرات: ${Formatters.formatMoney(amperes)} أمبير",
         "سعر الأمبير: ${Formatters.formatMoney(pricePerAmpere)}",
         "----------------------------",
+        if (discount > 0) "الإجمالي قبل الخصم: ${Formatters.formatMoney(subtotal())}" else "",
+        if (discount > 0) "الخصم: ${Formatters.formatMoney(discount)}" else "",
         "المبلغ الإجمالي: ${Formatters.formatMoney(amount)}",
         if (note.isNotBlank()) "ملاحظة: $note" else "",
         "----------------------------",
@@ -66,6 +74,10 @@ data class ReceiptData(
         add(ReceiptLine.Field("عدد الأمبيرات", "${Formatters.formatMoney(amperes)} أمبير"))
         add(ReceiptLine.Field("سعر الأمبير", Formatters.formatMoney(pricePerAmpere)))
         add(ReceiptLine.Divider())
+        if (discount > 0) {
+            add(ReceiptLine.Field("الإجمالي قبل الخصم", Formatters.formatMoney(subtotal())))
+            add(ReceiptLine.Field("الخصم", "- ${Formatters.formatMoney(discount)}"))
+        }
         add(ReceiptLine.Total("المبلغ الإجمالي", Formatters.formatMoney(amount)))
         if (note.isNotBlank()) add(ReceiptLine.Note("ملاحظة: $note"))
         add(ReceiptLine.Divider())

@@ -186,10 +186,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         note: String,
         subscriberType: String = "",
         costPricePerAmpere: Double = 0.0,
+        discount: Double = 0.0,
         onCreated: (Invoice) -> Unit
     ) {
         viewModelScope.launch {
-            val amount = amperes * pricePerAmpere
+            val subtotal = amperes * pricePerAmpere
+            // لا يمكن أن يكون الخصم سالبًا ولا أكبر من الإجمالي قبل الخصم
+            val safeDiscount = discount.coerceIn(0.0, subtotal.coerceAtLeast(0.0))
+            val amount = subtotal - safeDiscount
             val profit = amount - (amperes * costPricePerAmpere)
             val invoice = Invoice(
                 subscriberId = subscriberId,
@@ -202,7 +206,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 note = note,
                 subscriberType = subscriberType,
                 costPricePerAmpere = costPricePerAmpere,
-                profit = profit
+                profit = profit,
+                discount = safeDiscount
             )
             repository.addInvoice(invoice)
             onCreated(invoice)

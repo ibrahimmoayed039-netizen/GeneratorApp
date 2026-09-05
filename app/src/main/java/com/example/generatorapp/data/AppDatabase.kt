@@ -37,7 +37,7 @@ import com.example.generatorapp.data.entities.Subscription
         Expense::class, AmpereChangeLog::class, GeneratorHourLog::class,
         MaintenanceItem::class, FaultLog::class, PriceChangeLog::class
     ],
-    version = 7,
+    version = 8,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -159,6 +159,16 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * يضيف: عمود الخصم لكل فاتورة (اختياري، القيمة الافتراضية صفر = بدون خصم كما كان
+         * سلوك التطبيق سابقًا). "amount" يبقى كما هو المبلغ الصافي بعد الخصم.
+         */
+        private val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE invoices ADD COLUMN discount REAL NOT NULL DEFAULT 0.0")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -166,7 +176,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "generator_app.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()
                     .build()

@@ -14,6 +14,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -53,6 +54,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
     var selectedGenerator by remember { mutableStateOf<Generator?>(null) }
     var amperes by remember { mutableStateOf("") }
     var pricePerAmpere by remember { mutableStateOf("") }
+    var discount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
 
     var currentReceipt by remember { mutableStateOf<ReceiptData?>(null) }
@@ -206,6 +208,42 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                 label = { Text("سعر الأمبير") }, modifier = Modifier.fillMaxWidth()
             )
             OutlinedTextField(
+                value = discount, onValueChange = { discount = it },
+                label = { Text("خصم على المجموع (اختياري)") },
+                modifier = Modifier.fillMaxWidth()
+            )
+
+            // معاينة فورية للإجمالي بعد الخصم قبل تسجيل الدفعة
+            run {
+                val amp = amperes.toDoubleOrNull() ?: 0.0
+                val price = pricePerAmpere.toDoubleOrNull() ?: 0.0
+                val disc = discount.toDoubleOrNull() ?: 0.0
+                val subtotal = amp * price
+                if (subtotal > 0.0) {
+                    val safeDiscount = disc.coerceIn(0.0, subtotal)
+                    val net = subtotal - safeDiscount
+                    Column {
+                        if (safeDiscount > 0.0) {
+                            Text(
+                                "الإجمالي قبل الخصم: ${com.example.generatorapp.util.Formatters.formatMoney(subtotal)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "الخصم: ${com.example.generatorapp.util.Formatters.formatMoney(safeDiscount)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+                        Text(
+                            "المبلغ المطلوب: ${com.example.generatorapp.util.Formatters.formatMoney(net)}",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
                 value = note, onValueChange = { note = it },
                 label = { Text("ملاحظة (اختياري)") }, modifier = Modifier.fillMaxWidth()
             )
@@ -240,6 +278,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             generatorName = generator.name,
                             amperesText = amperes,
                             priceText = pricePerAmpere,
+                            discountText = discount,
                             note = note,
                             costPricePerAmpere = generator.costPricePerAmpere
                         ) { receipt -> currentReceipt = receipt }
@@ -300,6 +339,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             generatorName = generator.name,
                             amperesText = amperes,
                             priceText = pricePerAmpere,
+                            discountText = discount,
                             note = note,
                             costPricePerAmpere = generator.costPricePerAmpere
                         ) { receipt -> currentReceipt = receipt }
@@ -370,6 +410,7 @@ fun buildReceiptFromExistingInvoice(
         generatorName = invoice.generatorName,
         amperes = invoice.amperes,
         pricePerAmpere = invoice.pricePerAmpere,
+        discount = invoice.discount,
         amount = invoice.amount,
         dateMillis = invoice.date,
         note = invoice.note,
@@ -390,11 +431,13 @@ fun createInvoiceAndBuildReceipt(
     amperesText: String,
     priceText: String,
     note: String,
+    discountText: String = "0",
     costPricePerAmpere: Double = 0.0,
     onReceiptReady: (ReceiptData) -> Unit
 ) {
     val amp = amperesText.toDoubleOrNull() ?: 0.0
     val price = priceText.toDoubleOrNull() ?: 0.0
+    val discount = discountText.toDoubleOrNull() ?: 0.0
 
     viewModel.createInvoice(
         subscriberId = subscriber.id,
@@ -404,7 +447,8 @@ fun createInvoiceAndBuildReceipt(
         pricePerAmpere = price,
         note = note,
         subscriberType = subscriber.subscriberType,
-        costPricePerAmpere = costPricePerAmpere
+        costPricePerAmpere = costPricePerAmpere,
+        discount = discount
     ) { invoice ->
         onReceiptReady(
             ReceiptData(
@@ -415,6 +459,7 @@ fun createInvoiceAndBuildReceipt(
                 generatorName = invoice.generatorName,
                 amperes = invoice.amperes,
                 pricePerAmpere = invoice.pricePerAmpere,
+                discount = invoice.discount,
                 amount = invoice.amount,
                 dateMillis = invoice.date,
                 note = invoice.note,
