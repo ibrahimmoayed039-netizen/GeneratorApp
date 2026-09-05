@@ -57,7 +57,7 @@ fun AboutScreen(onBack: () -> Unit) {
             Spacer(modifier = Modifier.height(4.dp))
 
             Image(
-                painter = painterResource(id = R.mipmap.ic_launcher),
+                painter = painterResource(id = R.drawable.app_logo),
                 contentDescription = "شعار التطبيق",
                 modifier = Modifier
                     .size(112.dp)
