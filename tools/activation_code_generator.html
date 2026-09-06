@@ -1,0 +1,432 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>مولّد أكواد تفعيل - مدير المولدات</title>
+<style>
+  :root {
+    --navy: #14243C;
+    --navy-light: #1d3455;
+    --gold: #C9A24B;
+    --gold-dark: #a9822f;
+    --bg: #F6F3EC;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: "Tahoma", "Segoe UI", sans-serif;
+    background: var(--bg);
+    color: var(--navy);
+    display: flex;
+    justify-content: center;
+    padding: 24px 12px;
+  }
+  .card {
+    background: #fff;
+    border-radius: 18px;
+    box-shadow: 0 10px 30px rgba(20, 36, 60, 0.15);
+    max-width: 480px;
+    width: 100%;
+    padding: 28px 24px 32px;
+  }
+  .header {
+    text-align: center;
+    margin-bottom: 20px;
+  }
+  .header h1 {
+    font-size: 20px;
+    margin: 8px 0 4px;
+    color: var(--navy);
+  }
+  .header p {
+    font-size: 13px;
+    color: #667;
+    margin: 0;
+  }
+  .badge {
+    display: inline-block;
+    background: var(--navy);
+    color: var(--gold);
+    padding: 8px 18px;
+    border-radius: 999px;
+    font-weight: bold;
+    font-size: 14px;
+    letter-spacing: 1px;
+  }
+  label {
+    display: block;
+    font-size: 14px;
+    font-weight: bold;
+    margin: 16px 0 6px;
+    color: var(--navy);
+  }
+  input[type=text], input[type=number] {
+    width: 100%;
+    padding: 12px 14px;
+    font-size: 16px;
+    border-radius: 10px;
+    border: 1.5px solid #d7d2c4;
+    background: #fbfaf7;
+    color: var(--navy);
+    direction: ltr;
+    text-align: center;
+    letter-spacing: 1px;
+  }
+  input:focus { outline: none; border-color: var(--gold-dark); }
+  #shopName {
+    direction: rtl;
+    text-align: right;
+    letter-spacing: normal;
+  }
+  .type-toggle {
+    display: flex;
+    gap: 10px;
+    margin-top: 6px;
+  }
+  .type-toggle button {
+    flex: 1;
+    padding: 10px;
+    border-radius: 10px;
+    border: 1.5px solid #d7d2c4;
+    background: #fbfaf7;
+    color: var(--navy);
+    font-size: 14px;
+    cursor: pointer;
+  }
+  .type-toggle button.active {
+    background: var(--navy);
+    color: var(--gold);
+    border-color: var(--navy);
+  }
+  #daysWrap { display: none; }
+  .generate-btn {
+    width: 100%;
+    margin-top: 22px;
+    padding: 14px;
+    border: none;
+    border-radius: 12px;
+    background: var(--navy);
+    color: var(--gold);
+    font-size: 16px;
+    font-weight: bold;
+    cursor: pointer;
+  }
+  .generate-btn:hover { background: var(--navy-light); }
+  .result {
+    margin-top: 22px;
+    padding: 18px;
+    border-radius: 14px;
+    background: #f1eee4;
+    border: 1.5px dashed var(--gold-dark);
+    text-align: center;
+    display: none;
+  }
+  .result .code {
+    font-size: 30px;
+    font-weight: bold;
+    letter-spacing: 3px;
+    color: var(--navy);
+    direction: ltr;
+    margin: 8px 0;
+  }
+  .result .meta {
+    font-size: 13px;
+    color: #667;
+  }
+  .copy-btn {
+    margin-top: 10px;
+    padding: 8px 20px;
+    border-radius: 8px;
+    border: 1.5px solid var(--navy);
+    background: #fff;
+    color: var(--navy);
+    cursor: pointer;
+    font-size: 14px;
+  }
+  .error {
+    margin-top: 14px;
+    color: #b3261e;
+    font-size: 14px;
+    text-align: center;
+    display: none;
+  }
+  .note {
+    margin-top: 24px;
+    font-size: 12px;
+    color: #889;
+    text-align: center;
+    line-height: 1.7;
+  }
+  .history {
+    margin-top: 28px;
+    border-top: 1.5px solid #eee6d3;
+    padding-top: 16px;
+  }
+  .history-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 10px;
+  }
+  .history-head h2 {
+    font-size: 15px;
+    margin: 0;
+    color: var(--navy);
+  }
+  .history-count {
+    background: var(--navy);
+    color: var(--gold);
+    font-size: 12px;
+    font-weight: bold;
+    padding: 3px 12px;
+    border-radius: 999px;
+  }
+  .clear-log-btn {
+    display: block;
+    margin: 12px auto 0;
+    background: none;
+    border: none;
+    color: #b3261e;
+    font-size: 12px;
+    cursor: pointer;
+    text-decoration: underline;
+  }
+  table.log-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+  table.log-table th, table.log-table td {
+    padding: 8px 6px;
+    text-align: center;
+    border-bottom: 1px solid #f0ece1;
+  }
+  table.log-table th {
+    color: #778;
+    font-weight: bold;
+    background: #faf8f2;
+  }
+  table.log-table td.code-cell {
+    direction: ltr;
+    font-weight: bold;
+    color: var(--navy);
+  }
+  .empty-log {
+    text-align: center;
+    color: #99a;
+    font-size: 13px;
+    padding: 14px 0;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="header">
+      <span class="badge">GOLDEN TRACK</span>
+      <h1>مولّد أكواد تفعيل تطبيق "مدير المولدات"</h1>
+      <p>أداة داخلية للمطوّر فقط — تعمل بالكامل دون إنترنت</p>
+    </div>
+
+    <label for="shopName">اسم المحل (اختياري، للسجل فقط)</label>
+    <input type="text" id="shopName" placeholder="مثال: محل الأمانة للمولدات">
+
+    <label for="deviceId">رقم الجهاز (يُرسله صاحب المحل من شاشة التفعيل)</label>
+    <input type="text" id="deviceId" placeholder="مثال: 482913" maxlength="6" inputmode="numeric">
+
+    <label>نوع التفعيل</label>
+    <div class="type-toggle">
+      <button type="button" id="btnPermanent" class="active">تفعيل دائم</button>
+      <button type="button" id="btnDays">عدد أيام محدد</button>
+    </div>
+
+    <div id="daysWrap">
+      <label for="days">عدد الأيام</label>
+      <input type="number" id="days" placeholder="مثال: 30" min="1" max="999">
+    </div>
+
+    <button class="generate-btn" id="generateBtn">توليد كود التفعيل</button>
+
+    <div class="error" id="errorBox"></div>
+
+    <div class="result" id="resultBox">
+      <div class="meta">كود التفعيل لهذا الجهاز:</div>
+      <div class="code" id="resultCode">—</div>
+      <div class="meta" id="resultMeta"></div>
+      <button class="copy-btn" id="copyBtn">نسخ الكود</button>
+    </div>
+
+    <div class="note">
+      أدخل رقم الجهاز كما وصلك من العميل بالضبط (6 أرقام)، اختر نوع التفعيل، ثم أرسل الكود
+      الناتج للعميل ليدخله في شاشة التفعيل بالتطبيق. كل كود يعمل فقط على رقم الجهاز الذي
+      وُلِّد له.
+    </div>
+
+    <div class="history">
+      <div class="history-head">
+        <h2>سجل الأكواد المولّدة</h2>
+        <span class="history-count" id="historyCount">0</span>
+      </div>
+      <div id="historyContent"></div>
+      <button class="clear-log-btn" id="clearLogBtn">مسح السجل بالكامل</button>
+    </div>
+  </div>
+
+<script>
+  // ⚠️ يجب أن يبقى هذا المفتاح مطابقًا تمامًا لقيمة SECRET_KEY في
+  // ActivationManager.kt داخل تطبيق أندرويد، وإلا لن تتطابق الأكواد.
+  const SECRET_KEY = "GOLDEN-TRACK-2026";
+
+  // نفس خوارزمية checksum الموجودة في ActivationManager.kt حرفيًا
+  function computeChecksum(deviceId, daysPart) {
+    const combined = deviceId + daysPart + SECRET_KEY;
+    let hash = 7;
+    for (let i = 0; i < combined.length; i++) {
+      hash = (hash * 31 + combined.charCodeAt(i) + i) % 1000000;
+    }
+    return hash % 100000;
+  }
+
+  let activationType = "permanent";
+
+  const LOG_KEY = "gt_activation_codes_log";
+
+  function loadLog() {
+    try {
+      return JSON.parse(localStorage.getItem(LOG_KEY) || "[]");
+    } catch (e) {
+      return [];
+    }
+  }
+
+  function saveLog(log) {
+    localStorage.setItem(LOG_KEY, JSON.stringify(log));
+  }
+
+  function addToLog(entry) {
+    const log = loadLog();
+    log.unshift(entry); // الأحدث أولًا
+    saveLog(log);
+    renderLog();
+  }
+
+  function formatDate(ts) {
+    const d = new Date(ts);
+    return d.toLocaleDateString("ar-EG") + " " + d.toLocaleTimeString("ar-EG", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function renderLog() {
+    const log = loadLog();
+    document.getElementById("historyCount").textContent = log.length;
+    const content = document.getElementById("historyContent");
+
+    if (log.length === 0) {
+      content.innerHTML = '<div class="empty-log">لا توجد أكواد مولَّدة بعد</div>';
+      return;
+    }
+
+    let rows = log.map(item => `
+      <tr>
+        <td class="code-cell">${item.code}</td>
+        <td>${item.shopName ? item.shopName : "—"}</td>
+        <td>${item.deviceId}</td>
+        <td>${item.type === "permanent" ? "دائم" : item.days + " يوم"}</td>
+        <td>${formatDate(item.timestamp)}</td>
+      </tr>
+    `).join("");
+
+    content.innerHTML = `
+      <table class="log-table">
+        <thead>
+          <tr><th>الكود</th><th>اسم المحل</th><th>رقم الجهاز</th><th>النوع</th><th>التاريخ</th></tr>
+        </thead>
+        <tbody>${rows}</tbody>
+      </table>
+    `;
+  }
+
+  document.getElementById("clearLogBtn").addEventListener("click", () => {
+    if (confirm("هل تريد مسح سجل كل الأكواد المولَّدة سابقًا؟ لا يمكن التراجع عن هذا.")) {
+      saveLog([]);
+      renderLog();
+    }
+  });
+
+  renderLog();
+
+  const btnPermanent = document.getElementById("btnPermanent");
+  const btnDays = document.getElementById("btnDays");
+  const daysWrap = document.getElementById("daysWrap");
+
+  btnPermanent.addEventListener("click", () => {
+    activationType = "permanent";
+    btnPermanent.classList.add("active");
+    btnDays.classList.remove("active");
+    daysWrap.style.display = "none";
+  });
+
+  btnDays.addEventListener("click", () => {
+    activationType = "days";
+    btnDays.classList.add("active");
+    btnPermanent.classList.remove("active");
+    daysWrap.style.display = "block";
+  });
+
+  document.getElementById("generateBtn").addEventListener("click", () => {
+    const errorBox = document.getElementById("errorBox");
+    const resultBox = document.getElementById("resultBox");
+    errorBox.style.display = "none";
+    resultBox.style.display = "none";
+
+    const deviceId = document.getElementById("deviceId").value.trim();
+    const shopName = document.getElementById("shopName").value.trim();
+    if (!/^\d{6}$/.test(deviceId)) {
+      errorBox.textContent = "رقم الجهاز يجب أن يتكون من 6 أرقام بالضبط";
+      errorBox.style.display = "block";
+      return;
+    }
+
+    let days = 0;
+    if (activationType === "days") {
+      days = parseInt(document.getElementById("days").value, 10);
+      if (!days || days < 1 || days > 999) {
+        errorBox.textContent = "أدخل عدد أيام صحيح بين 1 و 999";
+        errorBox.style.display = "block";
+        return;
+      }
+    }
+
+    const daysPart = String(days).padStart(3, "0");
+    const checksum = computeChecksum(deviceId, daysPart);
+    const checksumPart = String(checksum).padStart(5, "0");
+    const finalCode = daysPart + "-" + checksumPart;
+
+    document.getElementById("resultCode").textContent = finalCode;
+    const shopLabel = shopName ? shopName + " — " : "";
+    document.getElementById("resultMeta").textContent =
+      activationType === "permanent"
+        ? shopLabel + "تفعيل دائم — جهاز رقم " + deviceId
+        : shopLabel + "تفعيل لمدة " + days + " يومًا — جهاز رقم " + deviceId;
+    resultBox.style.display = "block";
+
+    addToLog({
+      code: finalCode,
+      deviceId: deviceId,
+      shopName: shopName,
+      type: activationType,
+      days: days,
+      timestamp: Date.now()
+    });
+  });
+
+  document.getElementById("copyBtn").addEventListener("click", () => {
+    const code = document.getElementById("resultCode").textContent;
+    navigator.clipboard?.writeText(code).catch(() => {});
+    const btn = document.getElementById("copyBtn");
+    const original = btn.textContent;
+    btn.textContent = "تم النسخ ✓";
+    setTimeout(() => { btn.textContent = original; }, 1500);
+  });
+</script>
+</body>
+</html>
