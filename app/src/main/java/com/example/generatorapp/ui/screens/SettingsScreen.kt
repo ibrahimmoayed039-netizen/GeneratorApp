@@ -66,7 +66,7 @@ private val MAINTENANCE_WORK_NAME = com.example.generatorapp.MAINTENANCE_WORK_NA
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit, onOpenAbout: () -> Unit) {
+fun SettingsScreen(onBack: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var logoBitmap by remember { mutableStateOf<Bitmap?>(LogoManager.loadLogo(context)) }
@@ -210,6 +210,24 @@ fun SettingsScreen(onBack: () -> Unit, onOpenAbout: () -> Unit) {
 
     fun refreshBackups() {
         backupList = BackupManager.listBackups(context)
+    }
+
+    // منتقي ملفات عام (Storage Access Framework) لاستعادة نسخة احتياطية محفوظة يدويًا
+    // (من التنزيلات، أو مشاركة واتساب/بريد سابقة...)، ويعمل حتى لو مسحت بيانات التطبيق
+    // بالكامل وأصبح مجلد النسخ الداخلي فارغًا ولا توجد أي نسخة بالقائمة أدناه.
+    var restoreImportError by remember { mutableStateOf<String?>(null) }
+    val pickBackupFile = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri: Uri? ->
+        if (uri != null) {
+            val imported = BackupManager.importBackupFromUri(context, uri)
+            if (imported != null) {
+                refreshBackups()
+                confirmRestoreFile = imported
+            } else {
+                restoreImportError = "تعذّر قراءة هذا الملف، تأكد أنه ملف نسخة احتياطية صالح (.db)"
+            }
+        }
     }
 
     // نتحقق من الحالة الفعلية لمهمة النسخ الاحتياطي المجدولة عند فتح الشاشة
@@ -807,6 +825,18 @@ fun SettingsScreen(onBack: () -> Unit, onOpenAbout: () -> Unit) {
                 Text(it, color = MaterialTheme.colorScheme.primary)
             }
 
+            OutlinedButton(
+                onClick = {
+                    restoreImportError = null
+                    pickBackupFile.launch(arrayOf("*/*"))
+                },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text("استعادة من ملف (لو مسحت بيانات التطبيق ولا تظهر أي نسخة أدناه)") }
+
+            restoreImportError?.let {
+                Text(it, color = MaterialTheme.colorScheme.error)
+            }
+
             if (backupList.isNotEmpty()) {
                 Text(
                     "النسخ المحفوظة (${backupList.size})",
@@ -844,13 +874,6 @@ fun SettingsScreen(onBack: () -> Unit, onOpenAbout: () -> Unit) {
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
-
-            Divider(modifier = Modifier.padding(vertical = 8.dp))
-
-            OutlinedButton(
-                onClick = onOpenAbout,
-                modifier = Modifier.fillMaxWidth()
-            ) { Text("حول البرنامج") }
         }
     }
 

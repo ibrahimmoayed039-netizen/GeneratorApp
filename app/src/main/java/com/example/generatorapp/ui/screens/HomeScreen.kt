@@ -10,6 +10,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Cancel
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.MoneyOff
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Receipt
@@ -50,7 +51,8 @@ fun HomeScreen(
     onOpenProfitReport: () -> Unit,
     onOpenPaymentStatus: () -> Unit,
     onOpenMaintenanceAlerts: () -> Unit,
-    onOpenReminders: () -> Unit
+    onOpenReminders: () -> Unit,
+    onOpenAbout: () -> Unit
 ) {
     val subscribers by viewModel.subscribers.collectAsState(initial = emptyList())
     var monthRevenue by remember { mutableStateOf<Double?>(null) }
@@ -163,6 +165,7 @@ fun HomeScreen(
             HomeCard("المصروفات (ديزل/صيانة)", Icons.Filled.MoneyOff, onOpenExpenses)
             HomeCard("تقرير الأرباح", Icons.Filled.TrendingUp, onOpenProfitReport)
             HomeCard("إعدادات المحل (الشعار)", Icons.Filled.Settings, onOpenSettings)
+            HomeCard("حول البرنامج", Icons.Filled.Info, onOpenAbout)
         }
     }
 }

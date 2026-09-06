@@ -99,6 +99,27 @@ object BackupManager {
     fun deleteBackup(file: File): Boolean = file.delete()
 
     /**
+     * يستورد ملف نسخة احتياطية اختاره المستخدم يدويًا (عبر منتقي الملفات) إلى مجلد النسخ
+     * الخاص بالتطبيق، حتى تعمل معه بقية الوظائف (استعادة/مشاركة/حذف) بشكل طبيعي.
+     * ضروري في حالة مسح بيانات التطبيق أو إعادة تثبيته: عندها يصبح مجلد النسخ الداخلي فارغًا
+     * تمامًا (حتى لو كانت هناك نسخة محفوظة سابقًا في "التنزيلات" أو مشاركة عبر واتساب مثلاً)،
+     * فيحتاج المستخدم طريقة لاختيار ملف النسخة يدويًا من أي مكان على الجهاز بدل الاعتماد فقط
+     * على قائمة النسخ الداخلية.
+     */
+    fun importBackupFromUri(context: Context, uri: android.net.Uri): File? {
+        return try {
+            val fileName = "imported_${fileNameFormat.format(Date())}.db"
+            val destFile = File(backupsDir(context), fileName)
+            context.contentResolver.openInputStream(uri)?.use { input ->
+                destFile.outputStream().use { output -> input.copyTo(output) }
+            } ?: return null
+            destFile
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * ينسخ نسخة احتياطية موجودة (من تخزين التطبيق الخاص) إلى مجلد فرعي داخل "التنزيلات"
      * العامة على الجهاز (Download/GeneratorApp_Backups)، بحيث يقدر المستخدم يوصلها ويشوفها
      * من أي تطبيق ملفات عادي (مثل "الملفات" أو "My Files")، أو ينقلها بسهولة لجهاز آخر.

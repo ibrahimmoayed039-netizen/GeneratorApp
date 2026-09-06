@@ -75,6 +75,11 @@ fun AboutScreen(onBack: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+            Text(
+                "حالة التفعيل: ${com.example.generatorapp.activation.ActivationManager.statusText(context)}",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.primary
+            )
 
             Spacer(modifier = Modifier.height(8.dp))
 

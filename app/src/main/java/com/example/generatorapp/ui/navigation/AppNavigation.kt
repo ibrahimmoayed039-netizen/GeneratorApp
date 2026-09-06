@@ -57,7 +57,8 @@ fun AppNavigation() {
                 onOpenProfitReport = { navController.navigate(Routes.PROFIT_REPORT) },
                 onOpenPaymentStatus = { navController.navigate(Routes.PAYMENT_STATUS) },
                 onOpenMaintenanceAlerts = { navController.navigate(Routes.MAINTENANCE_ALERTS) },
-                onOpenReminders = { navController.navigate(Routes.REMINDERS) }
+                onOpenReminders = { navController.navigate(Routes.REMINDERS) },
+                onOpenAbout = { navController.navigate(Routes.ABOUT) }
             )
         }
         composable(Routes.SUBSCRIBERS) {
@@ -80,10 +81,7 @@ fun AppNavigation() {
             BillingScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(
-                onBack = { navController.popBackStack() },
-                onOpenAbout = { navController.navigate(Routes.ABOUT) }
-            )
+            SettingsScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.ABOUT) {
             AboutScreen(onBack = { navController.popBackStack() })
