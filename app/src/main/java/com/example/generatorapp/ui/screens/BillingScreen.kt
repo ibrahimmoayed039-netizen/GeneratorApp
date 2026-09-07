@@ -56,6 +56,11 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
     var pricePerAmpere by remember { mutableStateOf("") }
     var discount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
+    var paidForMonth by remember {
+        mutableStateOf(
+            java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("ar")).format(java.util.Date())
+        )
+    }
 
     var currentReceipt by remember { mutableStateOf<ReceiptData?>(null) }
     // اختر عرض الورق الحراري: 32 حرف لـ58مم أو 48 حرف لـ80مم
@@ -244,6 +249,10 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                 }
             }
             OutlinedTextField(
+                value = paidForMonth, onValueChange = { paidForMonth = it },
+                label = { Text("تم الدفع لشهر") }, modifier = Modifier.fillMaxWidth()
+            )
+            OutlinedTextField(
                 value = note, onValueChange = { note = it },
                 label = { Text("ملاحظة (اختياري)") }, modifier = Modifier.fillMaxWidth()
             )
@@ -279,6 +288,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             amperesText = amperes,
                             priceText = pricePerAmpere,
                             discountText = discount,
+                            paidForMonth = paidForMonth,
                             note = note,
                             costPricePerAmpere = generator.costPricePerAmpere
                         ) { receipt -> currentReceipt = receipt }
@@ -340,6 +350,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             amperesText = amperes,
                             priceText = pricePerAmpere,
                             discountText = discount,
+                            paidForMonth = paidForMonth,
                             note = note,
                             costPricePerAmpere = generator.costPricePerAmpere
                         ) { receipt -> currentReceipt = receipt }
@@ -413,6 +424,7 @@ fun buildReceiptFromExistingInvoice(
         discount = invoice.discount,
         amount = invoice.amount,
         dateMillis = invoice.date,
+        paidForMonth = invoice.paidForMonth,
         note = invoice.note,
         logo = LogoManager.loadLogo(context)
     )
@@ -432,6 +444,7 @@ fun createInvoiceAndBuildReceipt(
     priceText: String,
     note: String,
     discountText: String = "0",
+    paidForMonth: String = "",
     costPricePerAmpere: Double = 0.0,
     onReceiptReady: (ReceiptData) -> Unit
 ) {
@@ -448,7 +461,8 @@ fun createInvoiceAndBuildReceipt(
         note = note,
         subscriberType = subscriber.subscriberType,
         costPricePerAmpere = costPricePerAmpere,
-        discount = discount
+        discount = discount,
+        paidForMonth = paidForMonth
     ) { invoice ->
         onReceiptReady(
             ReceiptData(
@@ -462,6 +476,7 @@ fun createInvoiceAndBuildReceipt(
                 discount = invoice.discount,
                 amount = invoice.amount,
                 dateMillis = invoice.date,
+                paidForMonth = invoice.paidForMonth,
                 note = invoice.note,
                 logo = LogoManager.loadLogo(context)
             )

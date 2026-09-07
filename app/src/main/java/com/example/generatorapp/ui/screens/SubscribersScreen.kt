@@ -35,6 +35,12 @@ import com.example.generatorapp.viewmodel.MainViewModel
 fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
     val context = LocalContext.current
     val subscribers by viewModel.subscribers.collectAsState(initial = emptyList())
+    val activeSubscriptions by viewModel.activeSubscriptions.collectAsState(initial = emptyList())
+
+    // إجمالي عدد الأمبيرات المشترك بها كل مشترك (قد يكون مشتركًا بأكثر من مولد بنفس الوقت)
+    val amperesBySubscriber = remember(activeSubscriptions) {
+        activeSubscriptions.groupBy { it.subscriberId }.mapValues { (_, subs) -> subs.sumOf { it.amperes } }
+    }
 
     var name by remember { mutableStateOf("") }
     var phone by remember { mutableStateOf("") }
@@ -166,7 +172,7 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
                             }
                         }
                         items(subs) { subscriber ->
-                            SubscriberRow(subscriber) { selectedSubscriber = subscriber }
+                            SubscriberRow(subscriber, amperesBySubscriber[subscriber.id]) { selectedSubscriber = subscriber }
                             Divider()
                         }
                     }
@@ -174,7 +180,7 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
             } else {
                 LazyColumn(modifier = Modifier.fillMaxSize()) {
                     items(filteredSubscribers) { subscriber ->
-                        SubscriberRow(subscriber) { selectedSubscriber = subscriber }
+                        SubscriberRow(subscriber, amperesBySubscriber[subscriber.id]) { selectedSubscriber = subscriber }
                         Divider()
                     }
                 }
@@ -231,12 +237,13 @@ fun SubscribersScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit
 
 /** صف يعرض بيانات مشترك واحد بقائمة المشتركين (مع نوعه ومنطقته إن وُجدت) */
 @Composable
-private fun SubscriberRow(subscriber: Subscriber, onClick: () -> Unit) {
+private fun SubscriberRow(subscriber: Subscriber, amperes: Double?, onClick: () -> Unit) {
     ListItem(
         headlineContent = { Text(subscriber.name) },
         supportingContent = {
             Text(
                 "${subscriber.phone} - عداد: ${subscriber.meterNumber} - ${subscriber.subscriberType}" +
+                    (if (amperes != null && amperes > 0) " - ${com.example.generatorapp.util.Formatters.formatMoney(amperes)} أمبير" else "") +
                     if (subscriber.area.isNotBlank()) " - ${subscriber.area}" else ""
             )
         },

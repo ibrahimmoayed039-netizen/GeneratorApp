@@ -37,7 +37,7 @@ import com.example.generatorapp.data.entities.Subscription
         Expense::class, AmpereChangeLog::class, GeneratorHourLog::class,
         MaintenanceItem::class, FaultLog::class, PriceChangeLog::class
     ],
-    version = 8,
+    version = 9,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -169,6 +169,13 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** يضيف عمود "الشهر المدفوع عنه" لكل فاتورة، يظهر بالوصل كـ "تم الدفع لشهر: ..." */
+        private val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE invoices ADD COLUMN paidForMonth TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -176,7 +183,7 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "generator_app.db"
                 )
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()
                     .build()

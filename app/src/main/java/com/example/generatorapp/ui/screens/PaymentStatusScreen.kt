@@ -388,6 +388,7 @@ private fun PaySubscriberDialog(
     }
     var amperes by remember { mutableStateOf("") }
     var pricePerAmpere by remember { mutableStateOf("") }
+    var discount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var thermalWidth by remember { mutableStateOf(32) }
 
@@ -515,8 +516,26 @@ private fun PaySubscriberDialog(
                             value = pricePerAmpere, onValueChange = { pricePerAmpere = it },
                             label = { Text("سعر الأمبير") }, modifier = Modifier.fillMaxWidth()
                         )
-                        // السعر الإجمالي المتوقع = عدد الأمبيرات × سعر الأمبير، يتحدّث فورًا مع أي تعديل على السعر
-                        val totalPrice = (amperes.toDoubleOrNull() ?: 0.0) * (pricePerAmpere.toDoubleOrNull() ?: 0.0)
+                        OutlinedTextField(
+                            value = discount, onValueChange = { discount = it },
+                            label = { Text("خصم على المجموع (اختياري)") }, modifier = Modifier.fillMaxWidth()
+                        )
+                        // السعر الإجمالي المتوقع = (عدد الأمبيرات × سعر الأمبير) - الخصم، يتحدّث فورًا مع أي تعديل
+                        val subtotalPrice = (amperes.toDoubleOrNull() ?: 0.0) * (pricePerAmpere.toDoubleOrNull() ?: 0.0)
+                        val safeDiscount = (discount.toDoubleOrNull() ?: 0.0).coerceIn(0.0, subtotalPrice.coerceAtLeast(0.0))
+                        val totalPrice = subtotalPrice - safeDiscount
+                        if (safeDiscount > 0.0) {
+                            Text(
+                                "الإجمالي قبل الخصم: ${Formatters.formatMoney(subtotalPrice)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Text(
+                                "الخصم: ${Formatters.formatMoney(safeDiscount)}",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
                         Surface(
                             color = MaterialTheme.colorScheme.primaryContainer,
                             shape = MaterialTheme.shapes.small,
@@ -593,6 +612,7 @@ private fun PaySubscriberDialog(
                                 generatorName = gen.name,
                                 amperesText = amperes,
                                 priceText = pricePerAmpere,
+                                discountText = discount,
                                 note = note,
                                 costPricePerAmpere = gen.costPricePerAmpere
                             ) { receipt ->
@@ -637,6 +657,7 @@ private fun PaySubscriberDialog(
                             generatorName = gen.name,
                             amperesText = amperes,
                             priceText = pricePerAmpere,
+                            discountText = discount,
                             note = note,
                             costPricePerAmpere = gen.costPricePerAmpere
                         ) { receipt ->

@@ -178,7 +178,7 @@ class SystemPrintAdapter(
         // 3) بطاقة الحقول: خلفية بيضاء بحدود رفيعة، مع تظليل متبادل للصفوف
         val fieldLines = receipt.toReceiptLines().filterIsInstance<com.example.generatorapp.printing.ReceiptLine.Field>()
         val cardTop = y - 8f
-        val rowHeight = 27f
+        val rowHeight = 22f
         val cardHeight = fieldLines.size * rowHeight + 16f
         canvas.drawRoundRect(
             android.graphics.RectF(cardLeft, cardTop, cardRight, cardTop + cardHeight),

@@ -178,9 +178,7 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
 
                 is ReceiptLine.Total -> {
                     // المبلغ الإجمالي داخل صندوق مؤطّر بخط كبير غامق ليكون أبرز عنصر بالوصل
-                    output.write(LINE_FEED)
                     writeFieldLine(output, line.label, line.value, printerWidthDots, emphasize = true, framed = true)
-                    output.write(LINE_FEED)
                 }
 
                 is ReceiptLine.Note ->
@@ -195,7 +193,6 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
         }
 
         output.write(ALIGN_CENTER)
-        output.write(LINE_FEED)
         output.write(LINE_FEED)
         output.write(CUT_PAPER)
         output.flush()

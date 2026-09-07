@@ -26,6 +26,8 @@ data class ReceiptData(
     /** المبلغ الصافي المطلوب من المشترك بعد خصم "discount" من (عدد الأمبيرات × سعر الأمبير) */
     val amount: Double,
     val dateMillis: Long,
+    /** الشهر الذي يغطيه هذا الدفع (مثال: "سبتمبر 2026")، يظهر كسطر "تم الدفع لشهر: ..." */
+    val paidForMonth: String = "",
     val note: String = "",
     /** شعار المحل (اختياري) — يُحمَّل من LogoManager ويُستخدم في المعاينة والطباعتين */
     val logo: Bitmap? = null
@@ -52,6 +54,7 @@ data class ReceiptData(
         if (discount > 0) "الإجمالي قبل الخصم: ${Formatters.formatMoney(subtotal())}" else "",
         if (discount > 0) "الخصم: ${Formatters.formatMoney(discount)}" else "",
         "المبلغ الإجمالي: ${Formatters.formatMoney(amount)}",
+        if (paidForMonth.isNotBlank()) "تم الدفع لشهر: $paidForMonth" else "",
         if (note.isNotBlank()) "ملاحظة: $note" else "",
         "----------------------------",
         "شكراً لتعاملكم معنا"
@@ -79,6 +82,7 @@ data class ReceiptData(
             add(ReceiptLine.Field("الخصم", "- ${Formatters.formatMoney(discount)}"))
         }
         add(ReceiptLine.Total("المبلغ الإجمالي", Formatters.formatMoney(amount)))
+        if (paidForMonth.isNotBlank()) add(ReceiptLine.Note("تم الدفع لشهر: $paidForMonth"))
         if (note.isNotBlank()) add(ReceiptLine.Note("ملاحظة: $note"))
         add(ReceiptLine.Divider())
         add(ReceiptLine.Footer("شكراً لتعاملكم معنا"))

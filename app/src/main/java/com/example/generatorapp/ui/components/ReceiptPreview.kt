@@ -69,7 +69,7 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             )
         }
 
-        Spacer(modifier = Modifier.height(6.dp))
+        Spacer(modifier = Modifier.height(4.dp))
 
         Surface(
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
@@ -84,13 +84,13 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             )
         }
 
-        Spacer(modifier = Modifier.height(16.dp))
+        Spacer(modifier = Modifier.height(10.dp))
         DashedDivider()
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Column(
             modifier = Modifier.fillMaxWidth(),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             ReceiptInfoRow("التاريخ", receipt.formattedDate())
             ReceiptInfoRow("المشترك", receipt.subscriberName)
@@ -102,9 +102,9 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             ReceiptInfoRow("سعر الأمبير", Formatters.formatMoney(receipt.pricePerAmpere))
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(8.dp))
         DashedDivider()
-        Spacer(modifier = Modifier.height(14.dp))
+        Spacer(modifier = Modifier.height(8.dp))
 
         Surface(
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
@@ -132,8 +132,19 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             }
         }
 
+        if (receipt.paidForMonth.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "تم الدفع لشهر: ${receipt.paidForMonth}",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                color = MaterialTheme.colorScheme.primary,
+                textAlign = TextAlign.Center
+            )
+        }
+
         if (receipt.note.isNotBlank()) {
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             Text(
                 text = "ملاحظة: ${receipt.note}",
                 fontSize = 13.sp,
@@ -143,9 +154,9 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             )
         }
 
-        Spacer(modifier = Modifier.height(14.dp))
-        DashedDivider()
         Spacer(modifier = Modifier.height(10.dp))
+        DashedDivider()
+        Spacer(modifier = Modifier.height(8.dp))
 
         Text(
             text = "شكراً لتعاملكم معنا",

@@ -187,6 +187,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         subscriberType: String = "",
         costPricePerAmpere: Double = 0.0,
         discount: Double = 0.0,
+        paidForMonth: String = "",
         onCreated: (Invoice) -> Unit
     ) {
         viewModelScope.launch {
@@ -195,6 +196,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val safeDiscount = discount.coerceIn(0.0, subtotal.coerceAtLeast(0.0))
             val amount = subtotal - safeDiscount
             val profit = amount - (amperes * costPricePerAmpere)
+            // لو لم يُحدَّد شهر يدويًا، نستخدم شهر تاريخ اليوم تلقائيًا كافتراضي معقول
+            val finalMonth = paidForMonth.ifBlank {
+                java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("ar")).format(java.util.Date())
+            }
             val invoice = Invoice(
                 subscriberId = subscriberId,
                 subscriberName = subscriberName,
@@ -207,7 +212,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 subscriberType = subscriberType,
                 costPricePerAmpere = costPricePerAmpere,
                 profit = profit,
-                discount = safeDiscount
+                discount = safeDiscount,
+                paidForMonth = finalMonth
             )
             repository.addInvoice(invoice)
             onCreated(invoice)
