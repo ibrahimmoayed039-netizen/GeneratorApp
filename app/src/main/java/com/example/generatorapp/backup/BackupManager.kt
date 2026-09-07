@@ -45,7 +45,10 @@ object BackupManager {
      */
     suspend fun createBackup(context: Context): File {
         val db = AppDatabase.getInstance(context)
-        db.query("PRAGMA wal_checkpoint(FULL)", null).use { }
+        // مهم: لازم نقرأ من الـ Cursor فعليًا (moveToFirst) وإلا أندرويد لا ينفّذ استعلام
+        // الـ PRAGMA أصلًا، فيفضل الـ checkpoint ما يحصلش وتضيع أحدث البيانات (لسه بملف WAL
+        // ولم تُنقل لملف .db الرئيسي) من النسخة الاحتياطية بصمت من غير أي خطأ ظاهر.
+        db.query("PRAGMA wal_checkpoint(FULL)", null).use { cursor -> cursor.moveToFirst() }
 
         val dbFile = context.getDatabasePath(DB_NAME)
         val fileName = "backup_${fileNameFormat.format(Date())}.db"
