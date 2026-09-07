@@ -76,6 +76,7 @@ fun SettingsScreen(onBack: () -> Unit) {
     var shopName by remember { mutableStateOf(ShopInfoManager.getShopName(context)) }
     var shopPhone by remember { mutableStateOf(ShopInfoManager.getShopPhone(context)) }
     var shopInfoMessage by remember { mutableStateOf<String?>(null) }
+    var lineSpacing by remember { mutableStateOf(ShopInfoManager.getLineSpacing(context)) }
     var notificationsEnabled by remember { mutableStateOf(false) }
     var maintenanceNotificationsEnabled by remember { mutableStateOf(false) }
 
@@ -394,6 +395,39 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             shopInfoMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("تباعد الأسطر بالفاتورة", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "يتحكم بالمسافة بين أسطر الوصل عند الطباعة الحرارية. اختر \"متراص\" لتقريب " +
+                    "الأسطر من بعضها وتوفير الورق، أو \"متباعد\" لمسافة أكبر وسهولة قراءة أوضح.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                data class SpacingOption(val label: String, val dots: Int)
+                val options = listOf(
+                    SpacingOption("متراص", ShopInfoManager.LINE_SPACING_COMPACT),
+                    SpacingOption("عادي", ShopInfoManager.LINE_SPACING_NORMAL),
+                    SpacingOption("متباعد", ShopInfoManager.LINE_SPACING_WIDE)
+                )
+                options.forEach { option ->
+                    FilterChip(
+                        selected = lineSpacing == option.dots,
+                        onClick = {
+                            lineSpacing = option.dots
+                            ShopInfoManager.setLineSpacing(context, option.dots)
+                        },
+                        label = { Text(option.label) },
+                        modifier = Modifier.weight(1f)
+                    )
+                }
             }
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))

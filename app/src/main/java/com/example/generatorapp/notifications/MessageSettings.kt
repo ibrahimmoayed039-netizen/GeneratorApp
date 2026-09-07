@@ -66,9 +66,12 @@ object MessageSettings {
         if (!value) setAutoSmsEnabled(context, false)
     }
 
-    /** رمز الدولة الدولي بدون علامة + (مثال: 964 للعراق) — يُستخدم لتطبيع الأرقام عند فتح واتساب */
+    /** رمز دولة العراق الدولي — يُستخدم كقيمة افتراضية جاهزة لرمز الدولة بدون الحاجة لإدخاله يدويًا */
+    const val DEFAULT_COUNTRY_CODE = "964"
+
+    /** رمز الدولة الدولي بدون علامة + (افتراضيًا 964 للعراق) — يُستخدم لتطبيع الأرقام عند فتح واتساب */
     fun getCountryCode(context: Context): String =
-        prefs(context).getString(KEY_COUNTRY_CODE, "") ?: ""
+        prefs(context).getString(KEY_COUNTRY_CODE, DEFAULT_COUNTRY_CODE) ?: DEFAULT_COUNTRY_CODE
 
     fun setCountryCode(context: Context, value: String) {
         prefs(context).edit().putString(KEY_COUNTRY_CODE, value).apply()

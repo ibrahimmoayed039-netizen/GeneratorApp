@@ -25,11 +25,13 @@ object ReceiptPrintManager {
     }
 
     suspend fun printViaThermal(
+        context: Context,
         device: BluetoothDevice,
         receipt: ReceiptData,
         paperWidthChars: Int = 32 // استخدم 48 لعرض 80مم
     ) {
-        EscPosPrinter(paperWidthChars).printReceipt(device, receipt)
+        val lineSpacing = ShopInfoManager.getLineSpacing(context)
+        EscPosPrinter(paperWidthChars, lineSpacing).printReceipt(device, receipt)
     }
 
     /**

@@ -85,7 +85,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
         }
         scope.launch {
             try {
-                ReceiptPrintManager.printViaThermal(device, receipt, thermalWidth)
+                ReceiptPrintManager.printViaThermal(context, device, receipt, thermalWidth)
                 Toast.makeText(context, "تم إرسال الوصل للطابعة", Toast.LENGTH_SHORT).show()
             } catch (e: Exception) {
                 Toast.makeText(context, e.message ?: "فشل الاتصال بالطابعة", Toast.LENGTH_LONG).show()

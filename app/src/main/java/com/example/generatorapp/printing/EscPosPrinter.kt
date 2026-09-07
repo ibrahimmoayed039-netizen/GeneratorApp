@@ -22,8 +22,16 @@ import java.io.OutputStream
  * ملاحظة: عرض السطر يختلف حسب حجم الورق:
  *  - 58مم  ≈ 32 حرف/سطر (خط عادي)
  *  - 80مم  ≈ 48 حرف/سطر (خط عادي)
+ *
+ * [lineSpacingDots] يتحكم بالمسافة العمودية بين كل سطرين متتاليين بالفاتورة (أمر
+ * ESC/POS "ESC 3 n")، مما يسمح بتقريب الأسطر من بعضها (فاتورة مضغوطة توفّر بالورق)
+ * أو تباعدها. راجع [ShopInfoManager.LINE_SPACING_COMPACT]/[ShopInfoManager.LINE_SPACING_NORMAL]/
+ * [ShopInfoManager.LINE_SPACING_WIDE] للقيم الجاهزة المستخدمة بشاشة الإعدادات.
  */
-class EscPosPrinter(private val paperWidthChars: Int = 32) {
+class EscPosPrinter(
+    private val paperWidthChars: Int = 32,
+    private val lineSpacingDots: Int = ShopInfoManager.DEFAULT_LINE_SPACING
+) {
 
     companion object {
         // أوامر ESC/POS الأساسية
@@ -34,6 +42,8 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
         private val BOLD_OFF = byteArrayOf(0x1B, 0x45, 0x00)
         private val CUT_PAPER = byteArrayOf(0x1D, 0x56, 0x00)
         private val LINE_FEED = byteArrayOf(0x0A)
+        /** ESC 3 n — يضبط تباعد الأسطر لـ n نقطة؛ n=0x1B,0x33 متبوعة بقيمة النقاط */
+        private const val SET_LINE_SPACING_CMD: Byte = 0x33
 
         /** جملة عربية قصيرة تُستخدم في صفحة اختبار جداول الحروف */
         private const val CHARSET_TEST_SENTENCE = "بسم الله الرحمن الرحيم"
@@ -122,6 +132,10 @@ class EscPosPrinter(private val paperWidthChars: Int = 32) {
 
     private fun writeReceipt(output: OutputStream, receipt: ReceiptData) {
         output.write(INIT)
+        // نضبط تباعد الأسطر مرة واحدة أول الوصل؛ يبقى ساريًا على كل أوامر LINE_FEED
+        // (0x0A) اللاحقة بما فيها الأسطر المطبوعة كصور (bitmaps) — فيتقارب أو يتباعد
+        // كل سطر بالفاتورة تلقائيًا حسب [lineSpacingDots] دون تعديل كل سطر يدويًا.
+        output.write(byteArrayOf(0x1B, SET_LINE_SPACING_CMD, lineSpacingDots.coerceIn(0, 255).toByte()))
 
         output.write(ALIGN_CENTER)
         receipt.logo?.let { logo ->
