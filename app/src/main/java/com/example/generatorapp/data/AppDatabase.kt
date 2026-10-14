@@ -183,6 +183,10 @@ abstract class AppDatabase : RoomDatabase() {
                     AppDatabase::class.java,
                     "generator_app.db"
                 )
+                    // مهم للنسخ الاحتياطي: وضع WAL يُبقي أحدث البيانات في ملف جانبي (-wal) ولا ينقلها
+                    // للملف الرئيسي فورًا، فكان نسخ ملف .db وحده ينتج نسخة فارغة/قديمة (\"نقطة الصفر\").
+                    // بوضع TRUNCATE كل عملية تُكتب مباشرة داخل ملف .db نفسه فتكون كل نسخة كاملة.
+                    .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
                     .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()

@@ -5,6 +5,7 @@ import android.content.Context
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.PeriodicWorkRequestBuilder
 import androidx.work.WorkManager
+import com.example.generatorapp.backup.BackupManager
 import com.example.generatorapp.notifications.MaintenanceCheckWorker
 import com.example.generatorapp.notifications.NotificationHelper
 import java.util.concurrent.TimeUnit
@@ -42,6 +43,8 @@ class GeneratorApp : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createMaintenanceChannel(this)
+        // نسخ احتياطي تلقائي بعد كل عملية (إضافة/تعديل/حذف أي بيانات)
+        BackupManager.startAutoBackup(this)
         if (!MaintenanceAlertPrefs.isUserDisabled(this)) {
             scheduleMaintenanceWorkerOnStartup()
         }

@@ -802,7 +802,8 @@ fun SettingsScreen(onBack: () -> Unit) {
             Text("النسخ الاحتياطي", style = MaterialTheme.typography.titleMedium)
             Text(
                 "يحفظ نسخة كاملة من بيانات التطبيق (المشتركون، الفواتير، المولدات، المصروفات) " +
-                    "على الجهاز، ويمكن مشاركتها لأي تطبيق آخر (واتساب، بريد، درايف) لحفظها خارج الجهاز أيضًا.",
+                    "على الجهاز، ويمكن مشاركتها لأي تطبيق آخر (واتساب، بريد، درايف) لحفظها خارج الجهاز أيضًا. " +
+                    "ويُحدَّث تلقائيًا نسخة \"تلقائية\" بعد كل عملية (إضافة/تعديل/حذف).",
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

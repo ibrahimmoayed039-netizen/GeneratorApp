@@ -3,6 +3,17 @@ package com.example.generatorapp.backup
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.content.ContentUris
+import android.database.sqlite.SQLiteDatabase
+import androidx.room.InvalidationTracker
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.channels.BufferOverflow
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.launch
 import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
@@ -30,6 +41,11 @@ object BackupManager {
     private const val MAX_BACKUPS = 10
     /** اسم المجلد الفرعي داخل "التنزيلات" العامة بحيث يقدر المستخدم يوصل لنسخه بأي تطبيق ملفات */
     private const val DOWNLOADS_SUBFOLDER = "GeneratorApp_Backups"
+    /** اسم ملف النسخة التلقائية (تُستبدل بعد كل عملية بدل ما تتراكم عشرات النسخ) */
+    private const val AUTO_FILE_NAME = "auto_latest.db"
+    /** ننتظر هذه المدة بعد آخر تعديل قبل أخذ النسخة، حتى لا نكرر النسخ مع عدة عمليات متتالية */
+    private const val AUTO_DEBOUNCE_MS = 1500L
+    private val snapshotLock = Any()
     private val fileNameFormat = SimpleDateFormat("yyyy-MM-dd_HH-mm-ss", Locale.US)
     private val displayFormat = SimpleDateFormat("dd/MM/yyyy - hh:mm a", Locale("ar"))
 
@@ -44,29 +60,115 @@ object BackupManager {
      * يُفرَّغ الـ WAL بالكامل داخل الملف الرئيسي أولًا لضمان عدم فقدان أحدث البيانات.
      */
     suspend fun createBackup(context: Context): File {
-        val db = AppDatabase.getInstance(context)
-        // مهم: لازم نقرأ من الـ Cursor فعليًا (moveToFirst) وإلا أندرويد لا ينفّذ استعلام
-        // الـ PRAGMA أصلًا، فيفضل الـ checkpoint ما يحصلش وتضيع أحدث البيانات (لسه بملف WAL
-        // ولم تُنقل لملف .db الرئيسي) من النسخة الاحتياطية بصمت من غير أي خطأ ظاهر.
-        db.query("PRAGMA wal_checkpoint(FULL)", null).use { cursor -> cursor.moveToFirst() }
-
-        val dbFile = context.getDatabasePath(DB_NAME)
         val fileName = "backup_${fileNameFormat.format(Date())}.db"
         val destFile = File(backupsDir(context), fileName)
-        dbFile.copyTo(destFile, overwrite = true)
+        snapshotDatabase(context, destFile)
 
         cleanupOldBackups(context)
 
         // ننسخها أيضًا لمجلد "التنزيلات" العام تلقائيًا حتى يقدر المستخدم يوصلها من أي
-        // تطبيق ملفات عادي على الجهاز (تخزين التطبيق الخاص مخفي عن أغلب مديري الملفات
-        // من أندرويد 11 فما فوق). فشل هذه الخطوة لا يوقف عملية النسخ الاحتياطي نفسها.
+        // تطبيق ملفات عادي على الجهاز. فشل هذه الخطوة لا يوقف عملية النسخ الاحتياطي نفسها.
         copyToDownloads(context, destFile)
 
         return destFile
     }
 
+    /**
+     * يأخذ لقطة كاملة وسليمة من قاعدة البيانات الحالية داخل [dest].
+     * نعمل على نسخة مؤقتة (الملف الرئيسي + ملف الـ WAL إن وُجد) ثم نفتحها ونفرّغ الـ WAL بداخلها
+     * ونحوّلها لوضع DELETE، فيكون الناتج ملفًا واحدًا مكتملًا يحوي كل البيانات.
+     * هذا يضمن عدم ضياع أحدث العمليات حتى لو فشل الـ checkpoint على القاعدة الحيّة (بسبب قراءات جارية).
+     */
+    private fun snapshotDatabase(context: Context, dest: File) {
+        synchronized(snapshotLock) {
+            // محاولة تفريغ الـ WAL على القاعدة الحيّة (لا تضر لو فشلت؛ اللقطة أدناه تعالجها)
+            try {
+                AppDatabase.getInstance(context).query("PRAGMA wal_checkpoint(FULL)", null)
+                    .use { cursor -> cursor.moveToFirst() }
+            } catch (_: Exception) { }
+
+            val dbFile = context.getDatabasePath(DB_NAME)
+            val tmpDir = File(context.cacheDir, "backup_tmp")
+            tmpDir.deleteRecursively()
+            tmpDir.mkdirs()
+            val tmpDb = File(tmpDir, DB_NAME)
+            try {
+                dbFile.copyTo(tmpDb, overwrite = true)
+                val wal = File(dbFile.path + "-wal")
+                if (wal.exists()) wal.copyTo(File(tmpDb.path + "-wal"), overwrite = true)
+
+                val sq = SQLiteDatabase.openDatabase(tmpDb.path, null, SQLiteDatabase.OPEN_READWRITE)
+                try {
+                    sq.rawQuery("PRAGMA wal_checkpoint(TRUNCATE)", null).use { it.moveToFirst() }
+                    sq.rawQuery("PRAGMA journal_mode=DELETE", null).use { it.moveToFirst() }
+                } finally {
+                    sq.close()
+                }
+                tmpDb.copyTo(dest, overwrite = true)
+            } finally {
+                tmpDir.deleteRecursively()
+            }
+        }
+    }
+
+    // ======================= النسخ التلقائي بعد كل عملية =======================
+
+    private val autoScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+    private val changeSignal = MutableSharedFlow<Unit>(
+        extraBufferCapacity = 1,
+        onBufferOverflow = BufferOverflow.DROP_OLDEST
+    )
+    @Volatile private var autoStarted = false
+    @Volatile private var autoPaused = false
+
+    /**
+     * يراقب أي تعديل على أي جدول (إضافة/تعديل/حذف مشترك، فاتورة، مصروف...) وبعد كل تعديل
+     * (بعد مهلة قصيرة تجمع العمليات المتلاحقة) يحدّث النسخة التلقائية [AUTO_FILE_NAME]
+     * داخل مجلد النسخ وفي التنزيلات. يُستدعى مرة واحدة من [com.example.generatorapp.GeneratorApp].
+     */
+    @OptIn(FlowPreview::class)
+    fun startAutoBackup(context: Context) {
+        if (autoStarted) return
+        autoStarted = true
+        val app = context.applicationContext
+
+        autoScope.launch {
+            try {
+                AppDatabase.getInstance(app).invalidationTracker.addObserver(
+                    object : InvalidationTracker.Observer(
+                        "subscribers", "generators", "subscriptions", "invoices", "expenses",
+                        "ampere_change_logs", "generator_hour_logs", "maintenance_items",
+                        "fault_logs", "price_change_logs"
+                    ) {
+                        override fun onInvalidated(tables: Set<String>) {
+                            changeSignal.tryEmit(Unit)
+                        }
+                    }
+                )
+            } catch (_: Exception) { }
+        }
+
+        autoScope.launch {
+            changeSignal.debounce(AUTO_DEBOUNCE_MS).collect {
+                if (autoPaused) return@collect
+                try {
+                    createAutoBackup(app)
+                } catch (_: Exception) { }
+            }
+        }
+    }
+
+    /** يحدّث ملف النسخة التلقائية الوحيد (يُستبدل في كل مرة) */
+    private fun createAutoBackup(context: Context) {
+        val dest = File(backupsDir(context), AUTO_FILE_NAME)
+        snapshotDatabase(context, dest)
+        copyToDownloads(context, dest, overwrite = true)
+    }
+
+    private fun isAuto(file: File) = file.name == AUTO_FILE_NAME
+
     private fun cleanupOldBackups(context: Context) {
-        val backups = listBackups(context)
+        val backups = listBackups(context).filter { !isAuto(it) }
         if (backups.size > MAX_BACKUPS) {
             backups.drop(MAX_BACKUPS).forEach { it.delete() }
         }
@@ -79,22 +181,29 @@ object BackupManager {
             ?: emptyList()
 
     /** يحوّل اسم ملف النسخة إلى تاريخ ووقت مقروء للعرض بالواجهة */
-    fun displayName(file: File): String = displayFormat.format(Date(file.lastModified()))
+    fun displayName(file: File): String =
+        (if (isAuto(file)) "تلقائية - " else "") + displayFormat.format(Date(file.lastModified()))
 
     /**
      * يستبدل قاعدة البيانات الحالية بنسخة احتياطية معيّنة.
      * يجب إعادة تشغيل التطبيق بالكامل بعد الاستعادة (نُعيد فتح النشاط تلقائيًا من الواجهة).
      */
     fun restoreBackup(context: Context, backupFile: File): Boolean {
+        // نوقف النسخ التلقائي أثناء الاستعادة حتى لا يكتب فوق النسخة أو يعيد فتح القاعدة
+        autoPaused = true
         return try {
-            AppDatabase.closeInstance()
-            val dbFile = context.getDatabasePath(DB_NAME)
-            backupFile.copyTo(dbFile, overwrite = true)
-            // نحذف ملفات الـ WAL/SHM القديمة حتى لا تتعارض مع الملف المستعاد
-            File(dbFile.path + "-wal").delete()
-            File(dbFile.path + "-shm").delete()
+            synchronized(snapshotLock) {
+                AppDatabase.closeInstance()
+                val dbFile = context.getDatabasePath(DB_NAME)
+                // نحذف ملفات الـ WAL/SHM/journal القديمة قبل وضع الملف المستعاد حتى لا تتعارض معه
+                File(dbFile.path + "-wal").delete()
+                File(dbFile.path + "-shm").delete()
+                File(dbFile.path + "-journal").delete()
+                backupFile.copyTo(dbFile, overwrite = true)
+            }
             true
         } catch (e: Exception) {
+            autoPaused = false
             false
         }
     }
@@ -129,7 +238,7 @@ object BackupManager {
      * على أندرويد 10 فما فوق تُستخدم MediaStore (لا تحتاج أي صلاحية)، وعلى الإصدارات الأقدم
      * تُنسخ مباشرة لمجلد التنزيلات العام (يحتاج صلاحية WRITE_EXTERNAL_STORAGE وقت التشغيل).
      */
-    fun copyToDownloads(context: Context, backupFile: File): Boolean {
+    fun copyToDownloads(context: Context, backupFile: File, overwrite: Boolean = false): Boolean {
         return try {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
                 val resolver = context.contentResolver
@@ -140,8 +249,21 @@ object BackupManager {
                     arrayOf("Download/$DOWNLOADS_SUBFOLDER/", backupFile.name),
                     null
                 )
-                val alreadyExists = existing?.use { it.count > 0 } ?: false
-                if (alreadyExists) return true // نفس النسخة محفوظة أصلاً بالتنزيلات
+                var existingId: Long? = null
+                existing?.use { if (it.moveToFirst()) existingId = it.getLong(0) }
+                if (existingId != null) {
+                    if (!overwrite) return true // نفس النسخة محفوظة أصلاً بالتنزيلات
+                    // نستبدل محتوى الملف الموجود بدل إنشاء نسخة جديدة في كل مرة
+                    val existingUri = ContentUris.withAppendedId(MediaStore.Downloads.EXTERNAL_CONTENT_URI, existingId!!)
+                    val replaced = try {
+                        resolver.openOutputStream(existingUri, "wt")?.use { out ->
+                            backupFile.inputStream().use { input -> input.copyTo(out) }
+                            true
+                        } ?: false
+                    } catch (e: Exception) { false }
+                    if (replaced) return true
+                    // لو الملف تابع لتثبيت قديم ولا نقدر نعدّله، نكمل وننشئ ملفًا جديدًا
+                }
 
                 val values = ContentValues().apply {
                     put(MediaStore.MediaColumns.DISPLAY_NAME, backupFile.name)
