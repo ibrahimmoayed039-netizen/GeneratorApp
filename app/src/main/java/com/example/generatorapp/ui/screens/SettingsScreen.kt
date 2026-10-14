@@ -231,6 +231,24 @@ fun SettingsScreen(onBack: () -> Unit) {
         }
     }
 
+    // ملف الحفظ التلقائي الخارجي (مثلًا داخل Google Drive): المستخدم يختار مكان الملف واسمه مرة واحدة
+    var externalName by remember { mutableStateOf(BackupManager.externalTargetName(context)) }
+    var externalStatus by remember { mutableStateOf(BackupManager.externalTargetStatus(context)) }
+    val pickExternalTarget = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.CreateDocument("application/octet-stream")
+    ) { uri: Uri? ->
+        if (uri != null) {
+            BackupManager.setExternalTarget(context, uri)
+            scope.launch {
+                // نكتب أول نسخة فورًا للتأكد أن الملف يعمل
+                try { BackupManager.createBackup(context) } catch (_: Exception) { }
+                externalName = BackupManager.externalTargetName(context)
+                externalStatus = BackupManager.externalTargetStatus(context)
+                refreshBackups()
+            }
+        }
+    }
+
     // نتحقق من الحالة الفعلية لمهمة النسخ الاحتياطي المجدولة عند فتح الشاشة
     LaunchedEffect(Unit) {
         val infos = WorkManager.getInstance(context).getWorkInfosForUniqueWork(BACKUP_WORK_NAME).await()
@@ -858,6 +876,31 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             backupMessage?.let {
                 Text(it, color = MaterialTheme.colorScheme.primary)
+            }
+
+            Text("الحفظ التلقائي في Google Drive", style = MaterialTheme.typography.titleSmall)
+            Text(
+                "اختر ملفًا داخل Drive (من قائمة \"Drive\" في نافذة الحفظ)، وبعدها يُحدَّث هذا الملف تلقائيًا بعد كل عملية.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            externalName?.let {
+                Text("الملف المختار: $it", color = MaterialTheme.colorScheme.primary)
+                externalStatus?.let { st -> Text(st, style = MaterialTheme.typography.bodySmall) }
+            }
+            OutlinedButton(
+                onClick = { pickExternalTarget.launch("generator_backup.db") },
+                modifier = Modifier.fillMaxWidth()
+            ) { Text(if (externalName == null) "اختيار ملف الحفظ في Drive" else "تغيير الملف") }
+            if (externalName != null) {
+                OutlinedButton(
+                    onClick = {
+                        BackupManager.setExternalTarget(context, null)
+                        externalName = null
+                        externalStatus = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("إيقاف الحفظ في هذا الملف") }
             }
 
             OutlinedButton(

@@ -3,6 +3,8 @@ package com.example.generatorapp.backup
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.provider.OpenableColumns
 import android.content.ContentUris
 import android.database.sqlite.SQLiteDatabase
 import androidx.room.InvalidationTracker
@@ -69,6 +71,7 @@ object BackupManager {
         // ننسخها أيضًا لمجلد "التنزيلات" العام تلقائيًا حتى يقدر المستخدم يوصلها من أي
         // تطبيق ملفات عادي على الجهاز. فشل هذه الخطوة لا يوقف عملية النسخ الاحتياطي نفسها.
         copyToDownloads(context, destFile)
+        writeToExternalTarget(context, destFile)
 
         return destFile
     }
@@ -163,6 +166,68 @@ object BackupManager {
         val dest = File(backupsDir(context), AUTO_FILE_NAME)
         snapshotDatabase(context, dest)
         copyToDownloads(context, dest, overwrite = true)
+        writeToExternalTarget(context, dest)
+    }
+
+    // ================= ملف الحفظ التلقائي المختار (Google Drive أو أي مكان) =================
+
+    private const val PREFS = "backup_external_target"
+    private const val KEY_URI = "uri"
+    private const val KEY_STATUS = "status"
+
+    fun getExternalTarget(context: Context): Uri? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_URI, null)?.let { Uri.parse(it) }
+
+    /** يحفظ الملف الذي اختاره المستخدم (مثلًا داخل Drive) كوجهة لكل نسخة تلقائية. null = إلغاء الربط */
+    fun setExternalTarget(context: Context, uri: Uri?) {
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        getExternalTarget(context)?.let { old ->
+            try {
+                context.contentResolver.releasePersistableUriPermission(
+                    old, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                )
+            } catch (_: Exception) { }
+        }
+        if (uri == null) {
+            prefs.edit().remove(KEY_URI).remove(KEY_STATUS).apply()
+            return
+        }
+        // إذن دائم حتى يبقى التطبيق قادرًا على الكتابة بعد إغلاقه وإعادة تشغيل الجهاز
+        try {
+            context.contentResolver.takePersistableUriPermission(
+                uri, Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        } catch (_: Exception) { }
+        prefs.edit().putString(KEY_URI, uri.toString()).remove(KEY_STATUS).apply()
+    }
+
+    /** اسم الملف المختار للعرض بالواجهة */
+    fun externalTargetName(context: Context): String? {
+        val uri = getExternalTarget(context) ?: return null
+        return try {
+            context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)
+                ?.use { if (it.moveToFirst()) it.getString(0) else null } ?: uri.lastPathSegment
+        } catch (_: Exception) { uri.lastPathSegment }
+    }
+
+    /** آخر نتيجة كتابة على الملف المختار (نجاح بوقته أو سبب الفشل) */
+    fun externalTargetStatus(context: Context): String? =
+        context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).getString(KEY_STATUS, null)
+
+    /** يستبدل محتوى الملف المختار بآخر نسخة. فشله لا يوقف باقي عملية النسخ. */
+    fun writeToExternalTarget(context: Context, source: File): Boolean {
+        val uri = getExternalTarget(context) ?: return false
+        val prefs = context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
+        return try {
+            context.contentResolver.openOutputStream(uri, "wt")?.use { out ->
+                source.inputStream().use { it.copyTo(out) }
+            } ?: throw IllegalStateException("تعذّر فتح الملف")
+            prefs.edit().putString(KEY_STATUS, "آخر حفظ ناجح: " + displayFormat.format(Date())).apply()
+            true
+        } catch (e: Exception) {
+            prefs.edit().putString(KEY_STATUS, "فشل الحفظ في الملف المختار، اختر الملف من جديد (" + (e.message ?: "") + ")").apply()
+            false
+        }
     }
 
     private fun isAuto(file: File) = file.name == AUTO_FILE_NAME
