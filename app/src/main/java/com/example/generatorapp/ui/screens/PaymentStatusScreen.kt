@@ -640,10 +640,10 @@ private fun PaySubscriberDialog(
             errorMessage = pinError,
             onDismiss = { showPinDialog = false; pinError = null },
             onConfirm = { enteredPin ->
-                if (PinManager.verifyPin(context, enteredPin)) {
+                viewModel.authenticate(enteredPin) { pinOk ->
+                if (pinOk) {
                     showPinDialog = false
                     pinError = null
-                    PinSession.unlock()
 
                     val sub = selectedSubscription
                     val gen = generators.firstOrNull { it.id == sub?.generatorId }
@@ -668,6 +668,7 @@ private fun PaySubscriberDialog(
                     }
                 } else {
                     pinError = "رمز PIN غير صحيح، حاول مرة أخرى"
+                }
                 }
             }
         )

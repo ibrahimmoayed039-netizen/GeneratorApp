@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import com.example.generatorapp.data.dao.AmpereChangeLogDao
+import com.example.generatorapp.data.dao.EmployeeDao
 import com.example.generatorapp.data.dao.ExpenseDao
 import com.example.generatorapp.data.dao.FaultLogDao
 import com.example.generatorapp.data.dao.GeneratorDao
@@ -17,6 +18,7 @@ import com.example.generatorapp.data.dao.PriceChangeLogDao
 import com.example.generatorapp.data.dao.SubscriberDao
 import com.example.generatorapp.data.dao.SubscriptionDao
 import com.example.generatorapp.data.entities.AmpereChangeLog
+import com.example.generatorapp.data.entities.Employee
 import com.example.generatorapp.data.entities.Expense
 import com.example.generatorapp.data.entities.FaultLog
 import com.example.generatorapp.data.entities.Generator
@@ -35,9 +37,9 @@ import com.example.generatorapp.data.entities.Subscription
     entities = [
         Subscriber::class, Generator::class, Subscription::class, Invoice::class,
         Expense::class, AmpereChangeLog::class, GeneratorHourLog::class,
-        MaintenanceItem::class, FaultLog::class, PriceChangeLog::class
+        MaintenanceItem::class, FaultLog::class, PriceChangeLog::class, Employee::class
     ],
-    version = 9,
+    version = 10,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -52,6 +54,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun maintenanceItemDao(): MaintenanceItemDao
     abstract fun faultLogDao(): FaultLogDao
     abstract fun priceChangeLogDao(): PriceChangeLogDao
+    abstract fun employeeDao(): EmployeeDao
 
     companion object {
         @Volatile
@@ -176,6 +179,15 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /** يضيف جدول الموظفين + عمودي \"من استلم المبلغ\" لكل فاتورة (الفواتير القديمة تبقى بدون اسم مستلم) */
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("CREATE TABLE IF NOT EXISTS employees (id INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, name TEXT NOT NULL, pin TEXT NOT NULL, active INTEGER NOT NULL)")
+                db.execSQL("ALTER TABLE invoices ADD COLUMN receivedById INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE invoices ADD COLUMN receivedByName TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -187,7 +199,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // للملف الرئيسي فورًا، فكان نسخ ملف .db وحده ينتج نسخة فارغة/قديمة (\"نقطة الصفر\").
                     // بوضع TRUNCATE كل عملية تُكتب مباشرة داخل ملف .db نفسه فتكون كل نسخة كاملة.
                     .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()
                     .build()

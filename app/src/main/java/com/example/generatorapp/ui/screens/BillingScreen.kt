@@ -332,10 +332,10 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
             errorMessage = pinError,
             onDismiss = { showPinDialog = false; pinError = null },
             onConfirm = { enteredPin ->
-                if (PinManager.verifyPin(context, enteredPin)) {
+                viewModel.authenticate(enteredPin) { pinOk ->
+                if (pinOk) {
                     showPinDialog = false
                     pinError = null
-                    PinSession.unlock()
 
                     val subscriber = selectedSubscriber
                     val generator = selectedGenerator
@@ -357,6 +357,7 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                     }
                 } else {
                     pinError = "رمز PIN غير صحيح، حاول مرة أخرى"
+                }
                 }
             }
         )
@@ -426,6 +427,7 @@ fun buildReceiptFromExistingInvoice(
         dateMillis = invoice.date,
         paidForMonth = invoice.paidForMonth,
         note = invoice.note,
+        receivedBy = invoice.receivedByName,
         logo = LogoManager.loadLogo(context)
     )
 }
@@ -478,9 +480,12 @@ fun createInvoiceAndBuildReceipt(
                 dateMillis = invoice.date,
                 paidForMonth = invoice.paidForMonth,
                 note = invoice.note,
+                receivedBy = invoice.receivedByName,
                 logo = LogoManager.loadLogo(context)
             )
         )
+        // لو فُعّل "طلب الرمز عند كل دفعة": نقفل الجلسة حتى يُسجَّل كل استلام برمز صاحبه
+        if (PinManager.requirePinEveryPayment(context)) PinSession.lock()
     }
 }
 

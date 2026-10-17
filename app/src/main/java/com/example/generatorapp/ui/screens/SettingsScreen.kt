@@ -55,6 +55,12 @@ import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.ui.components.PrinterDiscoveryDialog
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.app.Activity
+import androidx.activity.result.IntentSenderRequest
+import com.example.generatorapp.backup.DriveBackup
+import com.google.android.gms.auth.api.identity.Identity
 import java.io.File
 import java.util.concurrent.TimeUnit
 
@@ -66,7 +72,11 @@ private val MAINTENANCE_WORK_NAME = com.example.generatorapp.MAINTENANCE_WORK_NA
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(onBack: () -> Unit) {
+fun SettingsScreen(
+    onBack: () -> Unit,
+    onOpenEmployees: () -> Unit = {},
+    onOpenEmployeeReport: () -> Unit = {}
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var logoBitmap by remember { mutableStateOf<Bitmap?>(LogoManager.loadLogo(context)) }
@@ -229,6 +239,59 @@ fun SettingsScreen(onBack: () -> Unit) {
                 restoreImportError = "تعذّر قراءة هذا الملف، تأكد أنه ملف نسخة احتياطية صالح (.db)"
             }
         }
+    }
+
+    // ===== الرفع التلقائي إلى حساب Google Drive (Drive API) =====
+    var driveEnabled by remember { mutableStateOf(DriveBackup.isEnabled(context)) }
+    var driveEmail by remember { mutableStateOf(DriveBackup.email(context)) }
+    var driveStatus by remember { mutableStateOf(DriveBackup.status(context)) }
+    var driveBusy by remember { mutableStateOf(false) }
+
+    fun uploadNow() {
+        scope.launch {
+            driveBusy = true
+            try { BackupManager.createBackup(context) } catch (_: Exception) { }
+            driveStatus = DriveBackup.status(context)
+            refreshBackups()
+            driveBusy = false
+        }
+    }
+
+    val driveConsent = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartIntentSenderForResult()
+    ) { result ->
+        if (result.resultCode == Activity.RESULT_OK && result.data != null) {
+            try {
+                val auth = Identity.getAuthorizationClient(context).getAuthorizationResultFromIntent(result.data)
+                DriveBackup.onAuthorized(context, auth)
+                driveEnabled = true
+                driveEmail = DriveBackup.email(context)
+                uploadNow()
+            } catch (e: Exception) {
+                driveStatus = "فشل ربط الحساب: ${e.message ?: ""}"
+            }
+        } else {
+            driveStatus = "تم إلغاء ربط الحساب"
+        }
+    }
+
+    fun connectDrive() {
+        driveStatus = null
+        Identity.getAuthorizationClient(context).authorize(DriveBackup.authorizationRequest())
+            .addOnSuccessListener { res ->
+                val pending = res.pendingIntent
+                if (res.hasResolution() && pending != null) {
+                    driveConsent.launch(IntentSenderRequest.Builder(pending.intentSender).build())
+                } else {
+                    DriveBackup.onAuthorized(context, res)
+                    driveEnabled = true
+                    driveEmail = DriveBackup.email(context)
+                    uploadNow()
+                }
+            }
+            .addOnFailureListener { e ->
+                driveStatus = "تعذّر الربط (تأكد من إعداد Google Cloud وبصمة SHA-1): ${e.message ?: ""}"
+            }
     }
 
     // ملف الحفظ التلقائي الخارجي (مثلًا داخل Google Drive): المستخدم يختار مكان الملف واسمه مرة واحدة
@@ -761,7 +824,7 @@ fun SettingsScreen(onBack: () -> Unit) {
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))
 
-            Text("رمز PIN للموظف (تسجيل الدفعات)", style = MaterialTheme.typography.titleMedium)
+            Text("رمز PIN للمدير (ويُقبل أيضًا رموز الموظفين)", style = MaterialTheme.typography.titleMedium)
             Text(
                 "هذا الرمز يطلبه التطبيق من أي موظف مرة واحدة فقط بعد فتح التطبيق " +
                     "(لأول عملية دفع)، وبعدها ما يُطلب مرة ثانية إلا بعد إغلاق التطبيق بالكامل " +
@@ -814,6 +877,22 @@ fun SettingsScreen(onBack: () -> Unit) {
                 },
                 modifier = Modifier.fillMaxWidth()
             ) { Text("قفل الجلسة الآن (طلب PIN من جديد)") }
+
+            Divider(modifier = Modifier.padding(vertical = 8.dp))
+
+            Text("الموظفون واستلام المبالغ", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "أضف موظفين برمز PIN لكل واحد، فيُسجَّل اسم من استلم المبلغ على كل فاتورة ووصل، " +
+                    "وتعرف من التقرير كم استلم كل موظف. (الشاشتان تطلبان رمز المدير أعلاه)",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            OutlinedButton(onClick = onOpenEmployees, modifier = Modifier.fillMaxWidth()) {
+                Text("إدارة الموظفين")
+            }
+            OutlinedButton(onClick = onOpenEmployeeReport, modifier = Modifier.fillMaxWidth()) {
+                Text("تقرير: من استلم المال")
+            }
 
             Divider(modifier = Modifier.padding(vertical = 8.dp))
 
@@ -878,7 +957,58 @@ fun SettingsScreen(onBack: () -> Unit) {
                 Text(it, color = MaterialTheme.colorScheme.primary)
             }
 
-            Text("الحفظ التلقائي في Google Drive", style = MaterialTheme.typography.titleSmall)
+            Text("الرفع التلقائي إلى حسابك في Google Drive", style = MaterialTheme.typography.titleMedium)
+            Text(
+                "بعد ربط حسابك يُرفع ملف \"${DriveBackup.FILE_NAME}\" إلى Drive تلقائيًا بعد كل عملية، " +
+                    "ولو لم يوجد إنترنت يُرفع حالما يعود الاتصال. يحتاج إعدادًا لمرة واحدة في Google Cloud.",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            if (!driveEnabled) {
+                Button(onClick = { connectDrive() }, modifier = Modifier.fillMaxWidth()) {
+                    Text("ربط حساب Google Drive")
+                }
+            } else {
+                Text("مربوط" + (driveEmail?.let { ": $it" } ?: ""), color = MaterialTheme.colorScheme.primary)
+                Button(
+                    enabled = !driveBusy,
+                    onClick = { uploadNow() },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text(if (driveBusy) "جارٍ الرفع..." else "رفع نسخة الآن") }
+                OutlinedButton(
+                    enabled = !driveBusy,
+                    onClick = {
+                        scope.launch {
+                            driveBusy = true
+                            val file = BackupManager.newDriveRestoreFile(context)
+                            val err = withContext(Dispatchers.IO) { DriveBackup.downloadLatest(context, file) }
+                            if (err == null) {
+                                refreshBackups()
+                                confirmRestoreFile = file
+                                driveStatus = "تم تنزيل آخر نسخة من Drive"
+                            } else {
+                                file.delete()
+                                driveStatus = err
+                            }
+                            driveBusy = false
+                        }
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("استعادة آخر نسخة من Drive") }
+                OutlinedButton(
+                    onClick = {
+                        DriveBackup.disable(context)
+                        driveEnabled = false
+                        driveEmail = null
+                        driveStatus = null
+                    },
+                    modifier = Modifier.fillMaxWidth()
+                ) { Text("إيقاف الرفع إلى Drive") }
+            }
+            driveStatus?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+
+            Divider(modifier = Modifier.padding(vertical = 4.dp))
+            Text("الحفظ التلقائي في ملف تختاره (طريقة بديلة)", style = MaterialTheme.typography.titleSmall)
             Text(
                 "اختر ملفًا داخل Drive (من قائمة \"Drive\" في نافذة الحفظ)، وبعدها يُحدَّث هذا الملف تلقائيًا بعد كل عملية.",
                 style = MaterialTheme.typography.bodySmall,

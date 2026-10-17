@@ -8,6 +8,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.generatorapp.ui.screens.AboutScreen
 import com.example.generatorapp.ui.screens.BillingScreen
+import com.example.generatorapp.ui.screens.EmployeeCollectionsScreen
+import com.example.generatorapp.ui.screens.EmployeesScreen
 import com.example.generatorapp.ui.screens.ExpensesScreen
 import com.example.generatorapp.ui.screens.GeneratorDetailScreen
 import com.example.generatorapp.ui.screens.GeneratorsScreen
@@ -36,6 +38,8 @@ object Routes {
     const val MAINTENANCE_ALERTS = "maintenance_alerts"
     const val REMINDERS = "reminders"
     const val ABOUT = "about"
+    const val EMPLOYEES = "employees"
+    const val EMPLOYEE_REPORT = "employee_report"
 
     fun generatorDetail(generatorId: Long) = "generator_detail/$generatorId"
 }
@@ -81,7 +85,17 @@ fun AppNavigation() {
             BillingScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETTINGS) {
-            SettingsScreen(onBack = { navController.popBackStack() })
+            SettingsScreen(
+                onBack = { navController.popBackStack() },
+                onOpenEmployees = { navController.navigate(Routes.EMPLOYEES) },
+                onOpenEmployeeReport = { navController.navigate(Routes.EMPLOYEE_REPORT) }
+            )
+        }
+        composable(Routes.EMPLOYEES) {
+            EmployeesScreen(onBack = { navController.popBackStack() })
+        }
+        composable(Routes.EMPLOYEE_REPORT) {
+            EmployeeCollectionsScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.ABOUT) {
             AboutScreen(onBack = { navController.popBackStack() })

@@ -8,7 +8,10 @@ import com.example.generatorapp.data.entities.Expense
 import com.example.generatorapp.data.entities.FaultLog
 import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.GeneratorHourLog
+import com.example.generatorapp.data.entities.Employee
 import com.example.generatorapp.data.entities.Invoice
+import com.example.generatorapp.security.PinManager
+import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.data.entities.MaintenanceItem
 import com.example.generatorapp.data.entities.Subscriber
 import com.example.generatorapp.data.entities.SubscriberType
@@ -105,6 +108,59 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val generators = repository.generators
     val invoices = repository.invoices
     val expenses = repository.expenses
+    val employees = repository.employees
+
+    /** الفواتير ضمن فترة زمنية (تُستخدم في تقرير من استلم المبالغ) */
+    fun invoicesInPeriod(start: Long, end: Long) = repository.invoicesBetween(start, end)
+
+    /**
+     * يتحقق من رمز PIN: رمز المدير الرئيسي أو رمز أي موظف مفعّل. عند النجاح تُفتح الجلسة
+     * باسم صاحب الرمز حتى يُسجَّل اسمه على الدفعات.
+     */
+    fun authenticate(pin: String, onResult: (Boolean) -> Unit) {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val entered = pin.trim()
+            if (PinManager.verifyPin(ctx, entered)) {
+                PinSession.unlock(0, PinManager.OWNER_NAME)
+                onResult(true)
+                return@launch
+            }
+            val employee = if (entered.isNotBlank()) repository.employeeByPin(entered) else null
+            if (employee != null) {
+                PinSession.unlock(employee.id, employee.name)
+                onResult(true)
+            } else {
+                onResult(false)
+            }
+        }
+    }
+
+    /** يضيف موظفًا جديدًا. يرجع نص الخطأ أو null عند النجاح */
+    fun addEmployee(name: String, pin: String, onResult: (String?) -> Unit) {
+        viewModelScope.launch {
+            val ctx = getApplication<Application>()
+            val cleanName = name.trim()
+            val cleanPin = pin.trim()
+            val error = when {
+                cleanName.isBlank() -> "أدخل اسم الموظف"
+                cleanPin.length < 4 -> "رمز الموظف يجب أن يكون 4 أرقام/أحرف على الأقل"
+                PinManager.verifyPin(ctx, cleanPin) -> "هذا الرمز مستخدم كرمز للمدير، اختر رمزًا آخر"
+                repository.isPinUsedByEmployee(cleanPin) -> "هذا الرمز مستخدم لموظف آخر، اختر رمزًا مختلفًا"
+                else -> null
+            }
+            if (error == null) repository.addEmployee(Employee(name = cleanName, pin = cleanPin))
+            onResult(error)
+        }
+    }
+
+    fun setEmployeeActive(employee: Employee, active: Boolean) {
+        viewModelScope.launch { repository.updateEmployee(employee.copy(active = active)) }
+    }
+
+    fun deleteEmployee(employee: Employee) {
+        viewModelScope.launch { repository.deleteEmployee(employee) }
+    }
     /** كل الاشتراكات الفعّالة حاليًا (بكل المولدات) — تُستخدم لحساب الأمبيرات الموزّعة لكل مولد */
     val activeSubscriptions = repository.activeSubscriptions
 
@@ -213,7 +269,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 costPricePerAmpere = costPricePerAmpere,
                 profit = profit,
                 discount = safeDiscount,
-                paidForMonth = finalMonth
+                paidForMonth = finalMonth,
+                // اسم من استلم المبلغ = صاحب الجلسة المفتوحة (مدير أو موظف) وقت الدفع
+                receivedById = PinSession.employeeId,
+                receivedByName = PinSession.employeeName
             )
             repository.addInvoice(invoice)
             onCreated(invoice)

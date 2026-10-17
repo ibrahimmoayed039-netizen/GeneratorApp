@@ -3,6 +3,7 @@ package com.example.generatorapp.repository
 import com.example.generatorapp.data.AppDatabase
 import com.example.generatorapp.data.dao.SubscriberLastPayment
 import com.example.generatorapp.data.entities.AmpereChangeLog
+import com.example.generatorapp.data.entities.Employee
 import com.example.generatorapp.data.entities.Expense
 import com.example.generatorapp.data.entities.FaultLog
 import com.example.generatorapp.data.entities.Generator
@@ -114,6 +115,14 @@ class AppRepository(private val db: AppDatabase) {
     fun invoicesBetween(start: Long, end: Long) = db.invoiceDao().getBetween(start, end)
     suspend fun lastPaymentPerSubscriber(): List<SubscriberLastPayment> =
         db.invoiceDao().getLastPaymentPerSubscriber()
+
+    // الموظفون
+    val employees = db.employeeDao().getAll()
+    suspend fun employeeByPin(pin: String) = db.employeeDao().findActiveByPin(pin)
+    suspend fun isPinUsedByEmployee(pin: String) = db.employeeDao().countWithPin(pin) > 0
+    suspend fun addEmployee(employee: Employee) = db.employeeDao().insert(employee)
+    suspend fun updateEmployee(employee: Employee) = db.employeeDao().update(employee)
+    suspend fun deleteEmployee(employee: Employee) = db.employeeDao().delete(employee)
 
     // المصروفات
     val expenses = db.expenseDao().getAll()

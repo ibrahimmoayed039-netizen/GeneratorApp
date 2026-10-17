@@ -3,6 +3,12 @@ package com.example.generatorapp.backup
 import android.content.ContentValues
 import android.content.Context
 import android.content.Intent
+import androidx.work.Constraints
+import androidx.work.ExistingWorkPolicy
+import androidx.work.NetworkType
+import androidx.work.OneTimeWorkRequestBuilder
+import androidx.work.WorkManager
+import kotlinx.coroutines.withContext
 import android.net.Uri
 import android.provider.OpenableColumns
 import android.content.ContentUris
@@ -61,7 +67,7 @@ object BackupManager {
      * ينشئ نسخة احتياطية جديدة من قاعدة البيانات الحالية.
      * يُفرَّغ الـ WAL بالكامل داخل الملف الرئيسي أولًا لضمان عدم فقدان أحدث البيانات.
      */
-    suspend fun createBackup(context: Context): File {
+    suspend fun createBackup(context: Context): File = withContext(Dispatchers.IO) {
         val fileName = "backup_${fileNameFormat.format(Date())}.db"
         val destFile = File(backupsDir(context), fileName)
         snapshotDatabase(context, destFile)
@@ -72,8 +78,9 @@ object BackupManager {
         // تطبيق ملفات عادي على الجهاز. فشل هذه الخطوة لا يوقف عملية النسخ الاحتياطي نفسها.
         copyToDownloads(context, destFile)
         writeToExternalTarget(context, destFile)
+        uploadToDrive(context, destFile)
 
-        return destFile
+        destFile
     }
 
     /**
@@ -141,7 +148,7 @@ object BackupManager {
                     object : InvalidationTracker.Observer(
                         "subscribers", "generators", "subscriptions", "invoices", "expenses",
                         "ampere_change_logs", "generator_hour_logs", "maintenance_items",
-                        "fault_logs", "price_change_logs"
+                        "fault_logs", "price_change_logs", "employees"
                     ) {
                         override fun onInvalidated(tables: Set<String>) {
                             changeSignal.tryEmit(Unit)
@@ -167,7 +174,39 @@ object BackupManager {
         snapshotDatabase(context, dest)
         copyToDownloads(context, dest, overwrite = true)
         writeToExternalTarget(context, dest)
+        uploadToDrive(context, dest)
     }
+
+    // ======================= الرفع إلى Google Drive (عبر Drive API) =======================
+
+    /** يرفع ملف النسخة لـ Drive (لو الربط مفعّل). لو فشل (غالبًا بسبب الإنترنت) تُجدول إعادة محاولة. */
+    private fun uploadToDrive(context: Context, file: File) {
+        if (!DriveBackup.isEnabled(context)) return
+        val bytes = synchronized(snapshotLock) { file.readBytes() }
+        if (!DriveBackup.upload(context, bytes)) scheduleDriveRetry(context)
+    }
+
+    /** يرفع آخر نسخة تلقائية موجودة (يستخدمه Worker إعادة المحاولة) */
+    fun uploadLatestToDrive(context: Context): Boolean {
+        val file = File(backupsDir(context), AUTO_FILE_NAME)
+        if (!file.exists()) return true
+        val bytes = synchronized(snapshotLock) { file.readBytes() }
+        return DriveBackup.upload(context, bytes)
+    }
+
+    private fun scheduleDriveRetry(context: Context) {
+        try {
+            val request = OneTimeWorkRequestBuilder<DriveUploadWorker>()
+                .setConstraints(Constraints.Builder().setRequiredNetworkType(NetworkType.CONNECTED).build())
+                .build()
+            WorkManager.getInstance(context)
+                .enqueueUniqueWork("drive_upload_retry", ExistingWorkPolicy.REPLACE, request)
+        } catch (_: Exception) { }
+    }
+
+    /** ملف داخل مجلد النسخ لنسخة نُزّلت من Drive قبل تأكيد استعادتها */
+    fun newDriveRestoreFile(context: Context): File =
+        File(backupsDir(context), "drive_${fileNameFormat.format(Date())}.db")
 
     // ================= ملف الحفظ التلقائي المختار (Google Drive أو أي مكان) =================
 

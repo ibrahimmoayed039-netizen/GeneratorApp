@@ -143,6 +143,16 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
             )
         }
 
+        if (receipt.receivedBy.isNotBlank()) {
+            Spacer(modifier = Modifier.height(8.dp))
+            Text(
+                text = "استلم المبلغ: ${receipt.receivedBy}",
+                fontSize = 13.sp,
+                fontWeight = FontWeight.SemiBold,
+                textAlign = TextAlign.Center
+            )
+        }
+
         if (receipt.note.isNotBlank()) {
             Spacer(modifier = Modifier.height(8.dp))
             Text(

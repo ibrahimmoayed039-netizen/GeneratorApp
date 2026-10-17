@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 fun PinDialog(
     title: String = "تسجيل دفعة",
     errorMessage: String?,
+    message: String = "أدخل رمزك الشخصي (PIN) لتأكيد الدفع — يُسجَّل اسمك كمستلم للمبلغ",
     onDismiss: () -> Unit,
     onConfirm: (String) -> Unit
 ) {
@@ -28,7 +29,7 @@ fun PinDialog(
         title = { Text(title) },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                Text("أدخل رمز الموظف (PIN) لتأكيد الدفع", style = MaterialTheme.typography.bodyMedium)
+                Text(message, style = MaterialTheme.typography.bodyMedium)
                 OutlinedTextField(
                     value = pin,
                     onValueChange = { if (it.length <= 8) pin = it },
@@ -50,4 +51,34 @@ fun PinDialog(
             TextButton(onClick = onDismiss) { Text("إلغاء") }
         }
     )
+}
+
+/**
+ * بوابة المدير: تعرض [content] فقط بعد إدخال رمز PIN الرئيسي للمدير (أو لو كان المدير مسجّلًا
+ * أصلًا بالجلسة الحالية). تُستخدم لحماية إدارة الموظفين وتقرير من استلم المبالغ.
+ */
+@Composable
+fun OwnerGate(onBack: () -> Unit, content: @Composable () -> Unit) {
+    val context = androidx.compose.ui.platform.LocalContext.current
+    var verified by remember {
+        mutableStateOf(
+            com.example.generatorapp.security.PinSession.unlocked &&
+                com.example.generatorapp.security.PinSession.employeeId == 0L
+        )
+    }
+    var error by remember { mutableStateOf<String?>(null) }
+    if (verified) {
+        content()
+    } else {
+        PinDialog(
+            title = "رمز المدير",
+            message = "هذه الشاشة للمدير فقط، أدخل رمز PIN الرئيسي",
+            errorMessage = error,
+            onDismiss = onBack,
+            onConfirm = {
+                if (com.example.generatorapp.security.PinManager.verifyPin(context, it)) verified = true
+                else error = "رمز المدير غير صحيح"
+            }
+        )
+    }
 }
