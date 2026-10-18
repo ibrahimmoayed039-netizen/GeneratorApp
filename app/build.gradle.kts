@@ -16,6 +16,17 @@ android {
         versionName = "1.0"
     }
 
+    // مفتاح توقيع ثابت (app/debug.keystore): بدونه يولّد GitHub Actions مفتاحًا جديدًا في كل بناء،
+    // فتتغير بصمة SHA-1 كل مرة ويفشل تسجيل الدخول بحساب Google (Drive).
+    signingConfigs {
+        getByName("debug") {
+            storeFile = file("debug.keystore")
+            storePassword = "android"
+            keyAlias = "androiddebugkey"
+            keyPassword = "android"
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
@@ -86,6 +97,9 @@ dependencies {
 
     // WorkManager (لتنبيهات المتأخرين اليومية التلقائية)
     implementation("androidx.work:work-runtime-ktx:2.9.1")
+
+    // تسجيل الدخول/التفويض بحساب Google (لرفع النسخ الاحتياطية إلى Google Drive)
+    implementation("com.google.android.gms:play-services-auth:21.2.0")
 
     // Testing
     testImplementation("junit:junit:4.13.2")
