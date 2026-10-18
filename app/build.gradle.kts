@@ -12,8 +12,12 @@ android {
         applicationId = "com.example.generatorapp"
         minSdk = 24
         targetSdk = 34
-        versionCode = 1
-        versionName = "1.0"
+        // رقم الإصدار يرتفع تلقائيًا مع كل بناء على GitHub Actions (GITHUB_RUN_NUMBER)،
+        // لأن أندرويد يرفض التحديث إذا لم يكن versionCode أكبر من المثبّت.
+        // يبدأ من 100 حتى يكون أكبر من الإصدارات السابقة (التي كانت 1) وعند البناء المحلي يبقى 100.
+        val runNumber = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
+        versionCode = 100 + runNumber
+        versionName = "1.0.$runNumber"
     }
 
     // مفتاح توقيع ثابت (app/debug.keystore): بدونه يولّد GitHub Actions مفتاحًا جديدًا في كل بناء،
