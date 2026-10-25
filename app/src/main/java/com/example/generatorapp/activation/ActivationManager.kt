@@ -20,6 +20,12 @@ object ActivationManager {
     private const val KEY_ACTIVATED = "activated"
     private const val KEY_PERMANENT = "permanent"
     private const val KEY_EXPIRY_MILLIS = "expiry_millis"
+    private const val KEY_TRIAL_START = "trial_start_millis"
+    private const val KEY_LAST_SEEN = "last_seen_millis"
+
+    /** مدة الفترة التجريبية المجانية بعد تنصيب البرنامج (بالأيام) */
+    const val TRIAL_DAYS = 5
+    private const val DAY_MILLIS = 24L * 60L * 60L * 1000L
 
     /**
      * المفتاح السري المشترك بين التطبيق وأداة توليد الأكواد (activation_code_generator.html).
@@ -83,7 +89,7 @@ object ActivationManager {
             return ActivationResult.Success("تم التفعيل الدائم بنجاح")
         }
 
-        val expiry = System.currentTimeMillis() + days.toLong() * 24L * 60L * 60L * 1000L
+        val expiry = safeNow(context) + days.toLong() * DAY_MILLIS
         p.edit()
             .putBoolean(KEY_ACTIVATED, true)
             .putBoolean(KEY_PERMANENT, false)
@@ -93,20 +99,60 @@ object ActivationManager {
     }
 
     /**
-     * هل التطبيق مفعّل حاليًا؟ في حال كان التفعيل مؤقتًا وانتهت مدته، يُلغى التفعيل تلقائيًا
-     * (فيُطلب من المستخدم كود جديد) عند هذا الاستدعاء نفسه.
+     * الوقت الحالي بعد حماية بسيطة من إرجاع ساعة الجهاز للخلف: لا نسمح للوقت بأن يقل عن
+     * آخر وقت سُجّل سابقًا، فلا يمكن إطالة الفترة التجريبية بتغيير تاريخ الجهاز.
      */
-    fun isActivated(context: Context): Boolean {
+    private fun safeNow(context: Context): Long {
+        val p = prefs(context)
+        val now = maxOf(System.currentTimeMillis(), p.getLong(KEY_LAST_SEEN, 0L))
+        p.edit().putLong(KEY_LAST_SEEN, now).apply()
+        return now
+    }
+
+    /** يسجّل بداية الفترة التجريبية عند أول تشغيل بعد التنصيب (مرة واحدة فقط) */
+    private fun ensureTrialStarted(context: Context) {
+        val p = prefs(context)
+        if (!p.contains(KEY_TRIAL_START)) {
+            p.edit().putLong(KEY_TRIAL_START, safeNow(context)).apply()
+        }
+    }
+
+    private fun trialEndMillis(context: Context): Long {
+        ensureTrialStarted(context)
+        return prefs(context).getLong(KEY_TRIAL_START, 0L) + TRIAL_DAYS * DAY_MILLIS
+    }
+
+    /** هل الفترة التجريبية (5 أيام) ما زالت سارية؟ */
+    fun isTrialActive(context: Context): Boolean = safeNow(context) < trialEndMillis(context)
+
+    /** عدد الأيام المتبقية من الفترة التجريبية (0 إذا انتهت) */
+    fun trialRemainingDays(context: Context): Int {
+        val remaining = trialEndMillis(context) - safeNow(context)
+        if (remaining <= 0) return 0
+        return (remaining / DAY_MILLIS).toInt() + 1
+    }
+
+    /** هل التفعيل الفعلي (بكود) ساري؟ — بدون احتساب الفترة التجريبية */
+    private fun isCodeActivated(context: Context): Boolean {
         val p = prefs(context)
         if (!p.getBoolean(KEY_ACTIVATED, false)) return false
         if (p.getBoolean(KEY_PERMANENT, false)) return true
 
         val expiry = p.getLong(KEY_EXPIRY_MILLIS, 0L)
-        if (expiry > System.currentTimeMillis()) return true
+        if (expiry > safeNow(context)) return true
 
         // انتهت مدة التفعيل المؤقت: نلغي التفعيل حتى يظهر للمستخدم طلب كود جديد
         p.edit().putBoolean(KEY_ACTIVATED, false).apply()
         return false
+    }
+
+    /**
+     * هل يُسمح بتشغيل التطبيق حاليًا؟ نعم إذا كان مفعّلًا بكود صالح، أو ما زالت الفترة
+     * التجريبية (5 أيام من أول تشغيل) سارية. بعد انتهائها يُطلب كود التفعيل.
+     */
+    fun isActivated(context: Context): Boolean {
+        ensureTrialStarted(context)
+        return isCodeActivated(context) || isTrialActive(context)
     }
 
     fun isPermanent(context: Context): Boolean = prefs(context).getBoolean(KEY_PERMANENT, false)
@@ -116,14 +162,17 @@ object ActivationManager {
         val p = prefs(context)
         if (p.getBoolean(KEY_PERMANENT, false)) return 0
         val expiry = p.getLong(KEY_EXPIRY_MILLIS, 0L)
-        val remainingMillis = expiry - System.currentTimeMillis()
+        val remainingMillis = expiry - safeNow(context)
         if (remainingMillis <= 0) return 0
         return (remainingMillis / (24L * 60L * 60L * 1000L)).toInt() + 1
     }
 
     /** نص وصفي لحالة التفعيل الحالية، لعرضه في شاشة "حول البرنامج" مثلًا */
     fun statusText(context: Context): String {
-        if (!isActivated(context)) return "غير مفعّل"
-        return if (isPermanent(context)) "مفعّل بشكل دائم" else "مفعّل — متبقي ${remainingDays(context)} يوم"
+        if (isCodeActivated(context)) {
+            return if (isPermanent(context)) "مفعّل بشكل دائم" else "مفعّل — متبقي ${remainingDays(context)} يوم"
+        }
+        if (isTrialActive(context)) return "فترة تجريبية — متبقي ${trialRemainingDays(context)} يوم"
+        return "غير مفعّل"
     }
 }
