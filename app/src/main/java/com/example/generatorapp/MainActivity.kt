@@ -11,7 +11,6 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -27,6 +26,14 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
+    // حالة التفعيل/الفترة التجريبية؛ تُعاد قراءتها في onResume لإيقاف التطبيق فور انتهاء الفترة
+    private var activated by mutableStateOf(false)
+
+    override fun onResume() {
+        super.onResume()
+        activated = ActivationManager.isActivated(this)
+    }
+
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* لا حاجة لفعل شيء هنا؛
             سواء وافق المستخدم أو لا، فحص الصيانة اليومي مجدول أصلاً من GeneratorApp،
@@ -34,6 +41,7 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        activated = ActivationManager.isActivated(this)
 
         // نطلب صلاحية الإشعارات مرة واحدة عند أول فتح للتطبيق (أندرويد 13 فأعلى)
         // حتى تصل تنبيهات الصيانة المجدولة تلقائيًا بدون الحاجة لدخول المستخدم لشاشة الإعدادات
@@ -49,11 +57,10 @@ class MainActivity : ComponentActivity() {
         setContent {
             GeneratorAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var activated by remember { mutableStateOf(ActivationManager.isActivated(this@MainActivity)) }
                     if (activated) {
                         AppNavigation()
                     } else {
-                        ActivationScreen(onActivated = { activated = true })
+                        ActivationScreen(onActivated = { activated = ActivationManager.isActivated(this@MainActivity) })
                     }
                 }
             }
