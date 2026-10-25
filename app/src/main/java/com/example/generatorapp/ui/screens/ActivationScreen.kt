@@ -67,7 +67,7 @@ fun ActivationScreen(onActivated: () -> Unit) {
                 fontWeight = FontWeight.Bold
             )
             Text(
-                "هذا التطبيق يحتاج كود تفعيل لمرة واحدة لكل جهاز. أدخل اسم محلك، وأرسل رقم " +
+                "انتهت الفترة التجريبية (${ActivationManager.TRIAL_DAYS} أيام). للاستمرار في استخدام التطبيق أدخل اسم محلك، وأرسل رقم " +
                     "الجهاز أدناه للمطوّر عبر الهاتف أو واتساب، وسيرسل لك كود التفعيل الخاص بجهازك.",
                 style = MaterialTheme.typography.bodyMedium,
                 textAlign = TextAlign.Center,
