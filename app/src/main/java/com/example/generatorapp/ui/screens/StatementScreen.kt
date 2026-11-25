@@ -98,7 +98,14 @@ fun StatementScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) 
                     items(list) { invoice ->
                         ListItem(
                             headlineContent = { Text("${invoice.generatorName} - ${Formatters.formatMoney(invoice.amount)}") },
-                            supportingContent = { Text(DateUtils.formatDate(invoice.date)) }
+                            supportingContent = {
+                                Text(
+                                    DateUtils.formatDate(invoice.date) +
+                                        if (invoice.remainingAfter > 0.005)
+                                            " — دفع جزئي، المتبقي: ${Formatters.formatMoney(invoice.remainingAfter)}"
+                                        else ""
+                                )
+                            }
                         )
                         Divider()
                     }

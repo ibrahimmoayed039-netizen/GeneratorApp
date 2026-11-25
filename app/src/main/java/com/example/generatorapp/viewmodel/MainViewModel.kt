@@ -10,6 +10,8 @@ import com.example.generatorapp.data.entities.Generator
 import com.example.generatorapp.data.entities.GeneratorHourLog
 import com.example.generatorapp.data.entities.Employee
 import com.example.generatorapp.data.entities.Invoice
+import com.example.generatorapp.data.entities.MONEY_EPSILON
+import com.example.generatorapp.data.entities.paidSoFarFor
 import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
 import com.example.generatorapp.data.entities.MaintenanceItem
@@ -77,7 +79,11 @@ data class PaymentStatusInfo(
     val paid: Boolean,
     val lastInvoiceThisMonthMillis: Long?,
     /** الفاتورة الأخيرة المسجّلة هذا الشهر (إن وُجدت) — تُستخدم لإعادة طباعة نفس الوصل دون إنشاء فاتورة جديدة */
-    val lastInvoice: Invoice? = null
+    val lastInvoice: Invoice? = null,
+    /** دفع جزء فقط من المستحق هذا الشهر ولا يزال عليه متبقٍ */
+    val partial: Boolean = false,
+    /** المتبقي على المشترك هذا الشهر (عند الدفع الجزئي) */
+    val remaining: Double = 0.0
 )
 
 /** ملخص تقرير الأرباح لفترة معيّنة */
@@ -244,18 +250,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         costPricePerAmpere: Double = 0.0,
         discount: Double = 0.0,
         paidForMonth: String = "",
+        /** المبلغ المدفوع فعليًا؛ null = دفع كامل المستحق (أو كامل المتبقي لو سبق دفع جزء من هذا الشهر) */
+        paidAmount: Double? = null,
         onCreated: (Invoice) -> Unit
     ) {
         viewModelScope.launch {
             val subtotal = amperes * pricePerAmpere
             // لا يمكن أن يكون الخصم سالبًا ولا أكبر من الإجمالي قبل الخصم
             val safeDiscount = discount.coerceIn(0.0, subtotal.coerceAtLeast(0.0))
-            val amount = subtotal - safeDiscount
-            val profit = amount - (amperes * costPricePerAmpere)
+            val totalDue = subtotal - safeDiscount
             // لو لم يُحدَّد شهر يدويًا، نستخدم شهر تاريخ اليوم تلقائيًا كافتراضي معقول
             val finalMonth = paidForMonth.ifBlank {
                 java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("ar")).format(java.util.Date())
             }
+            // ما دُفع سابقًا عن نفس الشهر → المتبقي المستحق الآن (لو الشهر مسدَّد أصلًا نعتبرها فاتورة جديدة كاملة)
+            val paidBefore = paidSoFarFor(repository.invoices.first(), subscriberId, finalMonth)
+            val owed = (totalDue - paidBefore).let { if (it <= MONEY_EPSILON) totalDue else it }
+            val amount = (paidAmount ?: owed).coerceIn(0.0, owed)
+            val remaining = (owed - amount).let { if (it <= MONEY_EPSILON) 0.0 else it }
+            // الربح يُوزَّع بنسبة المدفوع من المستحق، فمجموع أرباح الدفعات = ربح الفاتورة كاملة
+            val fullProfit = totalDue - (amperes * costPricePerAmpere)
+            val profit = if (totalDue > 0.0) fullProfit * (amount / totalDue) else fullProfit
             val invoice = Invoice(
                 subscriberId = subscriberId,
                 subscriberName = subscriberName,
@@ -272,7 +287,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 paidForMonth = finalMonth,
                 // اسم من استلم المبلغ = صاحب الجلسة المفتوحة (مدير أو موظف) وقت الدفع
                 receivedById = PinSession.employeeId,
-                receivedByName = PinSession.employeeName
+                receivedByName = PinSession.employeeName,
+                totalDue = totalDue,
+                remainingAfter = remaining
             )
             repository.addInvoice(invoice)
             onCreated(invoice)
@@ -408,11 +425,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     .invoicesForSubscriberBetween(sub.id, monthStart, monthEnd)
                     .first()
                 val lastInvoice = invoicesThisMonth.maxByOrNull { it.date }
+                val remaining = lastInvoice?.remainingAfter ?: 0.0
+                val hasRemaining = lastInvoice != null && remaining > MONEY_EPSILON
                 PaymentStatusInfo(
                     subscriber = sub,
-                    paid = invoicesThisMonth.isNotEmpty(),
+                    // مدفوع بالكامل فقط لو لا متبقي؛ الدفع الجزئي يبقى "غير مكتمل"
+                    paid = lastInvoice != null && !hasRemaining,
                     lastInvoiceThisMonthMillis = lastInvoice?.date,
-                    lastInvoice = lastInvoice
+                    lastInvoice = lastInvoice,
+                    partial = hasRemaining,
+                    remaining = if (hasRemaining) remaining else 0.0
                 )
             }
             onResult(statusList)

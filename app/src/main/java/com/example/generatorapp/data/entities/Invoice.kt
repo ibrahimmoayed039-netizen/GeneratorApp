@@ -43,5 +43,24 @@ data class Invoice(
     /** معرّف الموظف الذي استلم المبلغ (0 = المدير، أو فواتير قديمة قبل إضافة الموظفين) */
     val receivedById: Long = 0,
     /** اسم من استلم المبلغ وقت الدفع — يُحفظ نصًا حتى يبقى ظاهرًا لو حُذف الموظف لاحقًا */
-    val receivedByName: String = ""
+    val receivedByName: String = "",
+    /** إجمالي المبلغ المستحق لهذه الفاتورة (بعد الخصم). "amount" هو ما دُفع فعليًا بهذا الوصل (قد يكون جزءًا منه) */
+    val totalDue: Double = 0.0,
+    /** المتبقي على المشترك لهذا الشهر بعد هذه الدفعة (0 = مسدَّد بالكامل) */
+    val remainingAfter: Double = 0.0
 )
+
+/** الفرق أقل من هذا يُعتبر صفرًا (لتجنّب أخطاء الفاصلة العشرية) */
+const val MONEY_EPSILON = 0.005
+
+/**
+ * مجموع ما دفعه المشترك سابقًا عن شهر معيّن (من كل الوصولات المسجَّلة بنفس "تم الدفع لشهر").
+ * يُستخدم لمعرفة المتبقي عند الدفع على دفعات.
+ */
+fun paidSoFarFor(invoices: List<Invoice>, subscriberId: Long, paidForMonth: String): Double =
+    invoices.filter { it.subscriberId == subscriberId && it.paidForMonth == paidForMonth }
+        .sumOf { it.amount }
+
+/** ما دُفع سابقًا عن نفس الفاتورة قبل هذا الوصل (يُستنتج من المستحق والمتبقي وما دُفع الآن) */
+fun Invoice.previouslyPaid(): Double =
+    if (totalDue > 0.0) (totalDue - remainingAfter - amount).coerceAtLeast(0.0) else 0.0

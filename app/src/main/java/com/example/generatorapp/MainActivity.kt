@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.core.content.ContextCompat
@@ -18,6 +19,9 @@ import androidx.lifecycle.lifecycleScope
 import com.example.generatorapp.activation.ActivationManager
 import com.example.generatorapp.printing.BluetoothConnectionManager
 import com.example.generatorapp.printing.findPreferredThermalPrinter
+import com.example.generatorapp.security.PinManager
+import com.example.generatorapp.security.PinSession
+import com.example.generatorapp.ui.screens.LoginScreen
 import com.example.generatorapp.ui.navigation.AppNavigation
 import com.example.generatorapp.ui.screens.ActivationScreen
 import com.example.generatorapp.ui.theme.GeneratorAppTheme
@@ -26,14 +30,6 @@ import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
 
-    // حالة التفعيل/الفترة التجريبية؛ تُعاد قراءتها في onResume لإيقاف التطبيق فور انتهاء الفترة
-    private var activated by mutableStateOf(false)
-
-    override fun onResume() {
-        super.onResume()
-        activated = ActivationManager.isActivated(this)
-    }
-
     private val requestNotificationPermission =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { /* لا حاجة لفعل شيء هنا؛
             سواء وافق المستخدم أو لا، فحص الصيانة اليومي مجدول أصلاً من GeneratorApp،
@@ -41,7 +37,6 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        activated = ActivationManager.isActivated(this)
 
         // نطلب صلاحية الإشعارات مرة واحدة عند أول فتح للتطبيق (أندرويد 13 فأعلى)
         // حتى تصل تنبيهات الصيانة المجدولة تلقائيًا بدون الحاجة لدخول المستخدم لشاشة الإعدادات
@@ -57,10 +52,17 @@ class MainActivity : ComponentActivity() {
         setContent {
             GeneratorAppTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
+                    var activated by remember { mutableStateOf(ActivationManager.isActivated(this@MainActivity)) }
                     if (activated) {
-                        AppNavigation()
+                        // بوابة الدخول: يُطلب رمز المدير أو الموظف قبل عرض التطبيق
+                        val needLogin = PinManager.requireLoginOnStart(this@MainActivity) && !PinSession.loggedIn
+                        if (needLogin) {
+                            LoginScreen()
+                        } else {
+                            AppNavigation()
+                        }
                     } else {
-                        ActivationScreen(onActivated = { activated = ActivationManager.isActivated(this@MainActivity) })
+                        ActivationScreen(onActivated = { activated = true })
                     }
                 }
             }

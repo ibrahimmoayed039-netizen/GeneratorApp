@@ -39,7 +39,7 @@ import com.example.generatorapp.data.entities.Subscription
         Expense::class, AmpereChangeLog::class, GeneratorHourLog::class,
         MaintenanceItem::class, FaultLog::class, PriceChangeLog::class, Employee::class
     ],
-    version = 10,
+    version = 11,
     exportSchema = false
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -188,6 +188,18 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        /**
+         * يضيف دعم الدفع الجزئي: "totalDue" (إجمالي المستحق) و"remainingAfter" (المتبقي بعد الدفعة).
+         * الفواتير القديمة كلها كانت مدفوعة بالكامل، فنجعل المستحق = المبلغ والمتبقي = 0.
+         */
+        private val MIGRATION_10_11 = object : Migration(10, 11) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE invoices ADD COLUMN totalDue REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("ALTER TABLE invoices ADD COLUMN remainingAfter REAL NOT NULL DEFAULT 0.0")
+                db.execSQL("UPDATE invoices SET totalDue = amount")
+            }
+        }
+
         fun getInstance(context: Context): AppDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -199,7 +211,7 @@ abstract class AppDatabase : RoomDatabase() {
                     // للملف الرئيسي فورًا، فكان نسخ ملف .db وحده ينتج نسخة فارغة/قديمة (\"نقطة الصفر\").
                     // بوضع TRUNCATE كل عملية تُكتب مباشرة داخل ملف .db نفسه فتكون كل نسخة كاملة.
                     .setJournalMode(RoomDatabase.JournalMode.TRUNCATE)
-                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
+                    .addMigrations(MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11)
                     // احتياطًا فقط لأي قفزة إصدار غير متوقعة لا تغطيها خطوات Migration أعلاه.
                     .fallbackToDestructiveMigration()
                     .build()

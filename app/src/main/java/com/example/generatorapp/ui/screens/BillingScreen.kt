@@ -27,6 +27,10 @@ import com.example.generatorapp.printing.ReceiptPrintManager
 import com.example.generatorapp.printing.ShopInfoManager
 import com.example.generatorapp.security.PinManager
 import com.example.generatorapp.security.PinSession
+import com.example.generatorapp.ui.components.PaymentAmountSection
+import com.example.generatorapp.ui.components.resolvePaidAmount
+import com.example.generatorapp.data.entities.paidSoFarFor
+import com.example.generatorapp.data.entities.previouslyPaid
 import com.example.generatorapp.ui.components.PinDialog
 import com.example.generatorapp.ui.components.ReceiptPreview
 import com.example.generatorapp.viewmodel.MainViewModel
@@ -61,6 +65,17 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
             java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("ar")).format(java.util.Date())
         )
     }
+
+    // طريقة التسديد: كامل أو جزء من المبلغ
+    var partialPayment by remember { mutableStateOf(false) }
+    var partialText by remember { mutableStateOf("") }
+    val allInvoices by viewModel.invoices.collectAsState(initial = emptyList())
+    fun currentTotalDue(): Double {
+        val sub = (amperes.toDoubleOrNull() ?: 0.0) * (pricePerAmpere.toDoubleOrNull() ?: 0.0)
+        return sub - ((discount.toDoubleOrNull() ?: 0.0).coerceIn(0.0, sub.coerceAtLeast(0.0)))
+    }
+    fun currentPaidBefore(): Double =
+        selectedSubscriber?.let { paidSoFarFor(allInvoices, it.id, paidForMonth) } ?: 0.0
 
     var currentReceipt by remember { mutableStateOf<ReceiptData?>(null) }
     // اختر عرض الورق الحراري: 32 حرف لـ58مم أو 48 حرف لـ80مم
@@ -248,6 +263,14 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                     }
                 }
             }
+            PaymentAmountSection(
+                totalDue = currentTotalDue(),
+                paidBefore = currentPaidBefore(),
+                partial = partialPayment,
+                onPartialChange = { partialPayment = it },
+                partialText = partialText,
+                onPartialTextChange = { partialText = it }
+            )
             OutlinedTextField(
                 value = paidForMonth, onValueChange = { paidForMonth = it },
                 label = { Text("تم الدفع لشهر") }, modifier = Modifier.fillMaxWidth()
@@ -278,6 +301,13 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                         Toast.makeText(context, "اختر المشترك والمولد أولاً", Toast.LENGTH_SHORT).show()
                         return@Button
                     }
+                    val (_, amountError) = resolvePaidAmount(
+                        currentTotalDue(), currentPaidBefore(), partialPayment, partialText
+                    )
+                    if (amountError != null) {
+                        Toast.makeText(context, amountError, Toast.LENGTH_SHORT).show()
+                        return@Button
+                    }
                     if (PinSession.unlocked) {
                         // الجلسة مفتوحة أصلاً (تم إدخال الرمز سابقًا بنفس فتحة التطبيق) — سجّل الدفعة مباشرة
                         createInvoiceAndBuildReceipt(
@@ -290,8 +320,13 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             discountText = discount,
                             paidForMonth = paidForMonth,
                             note = note,
-                            costPricePerAmpere = generator.costPricePerAmpere
-                        ) { receipt -> currentReceipt = receipt }
+                            costPricePerAmpere = generator.costPricePerAmpere,
+                            paidAmount = resolvePaidAmount(currentTotalDue(), currentPaidBefore(), partialPayment, partialText).first
+                        ) { receipt ->
+                            currentReceipt = receipt
+                            partialPayment = false
+                            partialText = ""
+                        }
                     } else {
                         // أول مرة بهذه الجلسة — يجب إدخال رمز PIN
                         pinError = null
@@ -352,8 +387,13 @@ fun BillingScreen(viewModel: MainViewModel = viewModel(), onBack: () -> Unit) {
                             discountText = discount,
                             paidForMonth = paidForMonth,
                             note = note,
-                            costPricePerAmpere = generator.costPricePerAmpere
-                        ) { receipt -> currentReceipt = receipt }
+                            costPricePerAmpere = generator.costPricePerAmpere,
+                            paidAmount = resolvePaidAmount(currentTotalDue(), currentPaidBefore(), partialPayment, partialText).first
+                        ) { receipt ->
+                            currentReceipt = receipt
+                            partialPayment = false
+                            partialText = ""
+                        }
                     }
                 } else {
                     pinError = "رمز PIN غير صحيح، حاول مرة أخرى"
@@ -428,7 +468,10 @@ fun buildReceiptFromExistingInvoice(
         paidForMonth = invoice.paidForMonth,
         note = invoice.note,
         receivedBy = invoice.receivedByName,
-        logo = LogoManager.loadLogo(context)
+        logo = LogoManager.loadLogo(context),
+        totalDue = invoice.totalDue,
+        previouslyPaid = invoice.previouslyPaid(),
+        remaining = invoice.remainingAfter
     )
 }
 
@@ -448,6 +491,7 @@ fun createInvoiceAndBuildReceipt(
     discountText: String = "0",
     paidForMonth: String = "",
     costPricePerAmpere: Double = 0.0,
+    paidAmount: Double? = null,
     onReceiptReady: (ReceiptData) -> Unit
 ) {
     val amp = amperesText.toDoubleOrNull() ?: 0.0
@@ -464,7 +508,8 @@ fun createInvoiceAndBuildReceipt(
         subscriberType = subscriber.subscriberType,
         costPricePerAmpere = costPricePerAmpere,
         discount = discount,
-        paidForMonth = paidForMonth
+        paidForMonth = paidForMonth,
+        paidAmount = paidAmount
     ) { invoice ->
         onReceiptReady(
             ReceiptData(
@@ -481,7 +526,10 @@ fun createInvoiceAndBuildReceipt(
                 paidForMonth = invoice.paidForMonth,
                 note = invoice.note,
                 receivedBy = invoice.receivedByName,
-                logo = LogoManager.loadLogo(context)
+                logo = LogoManager.loadLogo(context),
+                totalDue = invoice.totalDue,
+                previouslyPaid = invoice.previouslyPaid(),
+                remaining = invoice.remainingAfter
             )
         )
         // لو فُعّل "طلب الرمز عند كل دفعة": نقفل الجلسة حتى يُسجَّل كل استلام برمز صاحبه

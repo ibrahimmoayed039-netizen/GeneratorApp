@@ -106,6 +106,19 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
         DashedDivider()
         Spacer(modifier = Modifier.height(8.dp))
 
+        if (receipt.isPartial) {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                ReceiptInfoRow("إجمالي المستحق", Formatters.formatMoney(receipt.totalDue))
+                if (receipt.previouslyPaid > 0.005) {
+                    ReceiptInfoRow("المدفوع سابقًا", Formatters.formatMoney(receipt.previouslyPaid))
+                }
+            }
+            Spacer(modifier = Modifier.height(8.dp))
+        }
+
         Surface(
             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.08f),
             shape = RoundedCornerShape(12.dp),
@@ -118,7 +131,7 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "المبلغ الإجمالي",
+                    text = receipt.amountLabel,
                     fontSize = 13.sp,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -130,6 +143,14 @@ fun ReceiptPreview(receipt: ReceiptData, modifier: Modifier = Modifier) {
                     color = MaterialTheme.colorScheme.primary
                 )
             }
+        }
+
+        if (receipt.isPartial) {
+            Spacer(modifier = Modifier.height(8.dp))
+            ReceiptInfoRow(
+                "المتبقي",
+                if (receipt.remaining > 0.005) Formatters.formatMoney(receipt.remaining) else "لا يوجد (مسدَّد)"
+            )
         }
 
         if (receipt.paidForMonth.isNotBlank()) {

@@ -878,6 +878,38 @@ fun SettingsScreen(
                 modifier = Modifier.fillMaxWidth()
             ) { Text("قفل الجلسة الآن (طلب PIN من جديد)") }
 
+            var loginRequired by remember { mutableStateOf(PinManager.requireLoginOnStart(context)) }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("طلب الرمز عند فتح التطبيق", style = MaterialTheme.typography.titleSmall)
+                    Text(
+                        "يطلب رمز المدير أو الموظف قبل الدخول للبرنامج",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = loginRequired,
+                    onCheckedChange = {
+                        loginRequired = it
+                        PinManager.setRequireLoginOnStart(context, it)
+                    }
+                )
+            }
+
+            Button(
+                onClick = { PinSession.logout() },
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Text(
+                    "تسجيل الخروج" +
+                        if (PinSession.employeeName.isNotBlank()) " (${PinSession.employeeName})" else ""
+                )
+            }
+
             Divider(modifier = Modifier.padding(vertical = 8.dp))
 
             Text("الموظفون واستلام المبالغ", style = MaterialTheme.typography.titleMedium)

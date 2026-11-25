@@ -38,6 +38,9 @@ import com.example.generatorapp.util.DateUtils
 import com.example.generatorapp.util.Formatters
 import com.example.generatorapp.viewmodel.MainViewModel
 import com.example.generatorapp.viewmodel.PaymentStatusInfo
+import com.example.generatorapp.ui.components.PaymentAmountSection
+import com.example.generatorapp.ui.components.resolvePaidAmount
+import com.example.generatorapp.data.entities.paidSoFarFor
 import kotlinx.coroutines.launch
 
 /** أخضر لطيف مخصص لبطاقة عدد المدفوعين (نفس --ok-green في معاينة HTML) */
@@ -316,7 +319,11 @@ private fun PaymentStatusRow(info: PaymentStatusInfo, onClick: () -> Unit) {
             .clip(RoundedCornerShape(12.dp)),
         onClick = onClick,
         colors = CardDefaults.cardColors(
-            containerColor = if (paid) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.surfaceVariant
+            containerColor = when {
+                paid -> MaterialTheme.colorScheme.error
+                info.partial -> MaterialTheme.colorScheme.tertiaryContainer
+                else -> MaterialTheme.colorScheme.surfaceVariant
+            }
         )
     ) {
         Row(
@@ -341,6 +348,14 @@ private fun PaymentStatusRow(info: PaymentStatusInfo, onClick: () -> Unit) {
                     else
                         MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.85f)
                 )
+                if (info.partial) {
+                    Text(
+                        "دفع جزئي — المتبقي: ${Formatters.formatMoney(info.remaining)}",
+                        style = MaterialTheme.typography.bodySmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onTertiaryContainer
+                    )
+                }
                 if (paid && info.lastInvoiceThisMonthMillis != null) {
                     Text(
                         "دُفع بتاريخ: ${DateUtils.formatDate(info.lastInvoiceThisMonthMillis)}",
@@ -357,7 +372,7 @@ private fun PaymentStatusRow(info: PaymentStatusInfo, onClick: () -> Unit) {
                     tint = MaterialTheme.colorScheme.onError
                 )
             } else {
-                AssistChip(onClick = onClick, label = { Text("دفع الآن") })
+                AssistChip(onClick = onClick, label = { Text(if (info.partial) "دفع المتبقي" else "دفع الآن") })
             }
         }
     }
@@ -391,6 +406,17 @@ private fun PaySubscriberDialog(
     var discount by remember { mutableStateOf("") }
     var note by remember { mutableStateOf("") }
     var thermalWidth by remember { mutableStateOf(32) }
+    var partialPayment by remember { mutableStateOf(false) }
+    var partialText by remember { mutableStateOf("") }
+    val allInvoices by viewModel.invoices.collectAsState(initial = emptyList())
+    val monthLabel = remember {
+        java.text.SimpleDateFormat("MMMM yyyy", java.util.Locale("ar")).format(java.util.Date())
+    }
+    fun currentTotalDue(): Double {
+        val sub = (amperes.toDoubleOrNull() ?: 0.0) * (pricePerAmpere.toDoubleOrNull() ?: 0.0)
+        return sub - (discount.toDoubleOrNull() ?: 0.0).coerceIn(0.0, sub.coerceAtLeast(0.0))
+    }
+    fun currentPaidBefore(): Double = paidSoFarFor(allInvoices, subscriber.id, monthLabel)
 
     // تعبئة تلقائية لعدد الأمبيرات وسعر الأمبير عند اختيار الاشتراك (قابلة للتعديل)
     LaunchedEffect(selectedSubscription, generators) {
@@ -555,6 +581,14 @@ private fun PaySubscriberDialog(
                                 )
                             }
                         }
+                        PaymentAmountSection(
+                            totalDue = totalPrice,
+                            paidBefore = currentPaidBefore(),
+                            partial = partialPayment,
+                            onPartialChange = { partialPayment = it },
+                            partialText = partialText,
+                            onPartialTextChange = { partialText = it }
+                        )
                         OutlinedTextField(
                             value = note, onValueChange = { note = it },
                             label = { Text("ملاحظة (اختياري)") }, modifier = Modifier.fillMaxWidth()
@@ -603,6 +637,12 @@ private fun PaySubscriberDialog(
                         val gen = generators.firstOrNull { it.id == sub?.generatorId }
                         if (sub == null || gen == null) {
                             Toast.makeText(context, "اختر اشتراك أولاً", Toast.LENGTH_SHORT).show()
+                        } else if (resolvePaidAmount(currentTotalDue(), currentPaidBefore(), partialPayment, partialText).second != null) {
+                            Toast.makeText(
+                                context,
+                                resolvePaidAmount(currentTotalDue(), currentPaidBefore(), partialPayment, partialText).second ?: "",
+                                Toast.LENGTH_SHORT
+                            ).show()
                         } else if (PinSession.unlocked) {
                             // الجلسة مفتوحة أصلاً — سجّل الدفعة مباشرة بدون طلب الرمز مرة ثانية
                             createInvoiceAndBuildReceipt(
@@ -614,7 +654,8 @@ private fun PaySubscriberDialog(
                                 priceText = pricePerAmpere,
                                 discountText = discount,
                                 note = note,
-                                costPricePerAmpere = gen.costPricePerAmpere
+                                costPricePerAmpere = gen.costPricePerAmpere,
+                            paidAmount = resolvePaidAmount(currentTotalDue(), currentPaidBefore(), partialPayment, partialText).first
                             ) { receipt ->
                                 currentReceipt = receipt
                                 onPaid()
@@ -659,7 +700,8 @@ private fun PaySubscriberDialog(
                             priceText = pricePerAmpere,
                             discountText = discount,
                             note = note,
-                            costPricePerAmpere = gen.costPricePerAmpere
+                            costPricePerAmpere = gen.costPricePerAmpere,
+                            paidAmount = resolvePaidAmount(currentTotalDue(), currentPaidBefore(), partialPayment, partialText).first
                         ) { receipt ->
                             currentReceipt = receipt
                             // يحدّث القائمة فورًا حتى يتلوّن العميل بالأحمر بمجرد الدفع

@@ -32,8 +32,20 @@ data class ReceiptData(
     /** اسم الموظف الذي استلم المبلغ (اختياري) — يظهر على الوصل */
     val receivedBy: String = "",
     /** شعار المحل (اختياري) — يُحمَّل من LogoManager ويُستخدم في المعاينة والطباعتين */
-    val logo: Bitmap? = null
+    val logo: Bitmap? = null,
+    /** إجمالي المستحق للفاتورة (بعد الخصم) — يُستخدم فقط لعرض تفاصيل الدفع الجزئي */
+    val totalDue: Double = 0.0,
+    /** ما دُفع سابقًا عن نفس الشهر قبل هذا الوصل */
+    val previouslyPaid: Double = 0.0,
+    /** المتبقي على المشترك بعد هذا الوصل (0 = مسدَّد بالكامل) */
+    val remaining: Double = 0.0
 ) {
+    /** هل هذا الوصل جزء من مبلغ أكبر (دفعة جزئية أو دفعة تُكمل جزءًا سابقًا)؟ */
+    val isPartial: Boolean get() = totalDue > 0.0 && (remaining > 0.005 || previouslyPaid > 0.005)
+
+    /** عنوان المبلغ الرئيسي بالوصل: "المبلغ المدفوع" عند الدفع الجزئي، وإلا "المبلغ الإجمالي" */
+    val amountLabel: String get() = if (isPartial) "المبلغ المدفوع" else "المبلغ الإجمالي"
+
     /** الإجمالي قبل الخصم = عدد الأمبيرات × سعر الأمبير (= amount + discount) */
     fun subtotal(): Double = amount + discount
 
@@ -55,7 +67,10 @@ data class ReceiptData(
         "----------------------------",
         if (discount > 0) "الإجمالي قبل الخصم: ${Formatters.formatMoney(subtotal())}" else "",
         if (discount > 0) "الخصم: ${Formatters.formatMoney(discount)}" else "",
-        "المبلغ الإجمالي: ${Formatters.formatMoney(amount)}",
+        if (isPartial) "إجمالي المستحق: ${Formatters.formatMoney(totalDue)}" else "",
+        if (isPartial && previouslyPaid > 0.005) "المدفوع سابقًا: ${Formatters.formatMoney(previouslyPaid)}" else "",
+        "$amountLabel: ${Formatters.formatMoney(amount)}",
+        if (isPartial) "المتبقي: ${Formatters.formatMoney(remaining)}" else "",
         if (paidForMonth.isNotBlank()) "تم الدفع لشهر: $paidForMonth" else "",
         if (receivedBy.isNotBlank()) "استلم المبلغ: $receivedBy" else "",
         if (note.isNotBlank()) "ملاحظة: $note" else "",
@@ -84,7 +99,14 @@ data class ReceiptData(
             add(ReceiptLine.Field("الإجمالي قبل الخصم", Formatters.formatMoney(subtotal())))
             add(ReceiptLine.Field("الخصم", "- ${Formatters.formatMoney(discount)}"))
         }
-        add(ReceiptLine.Total("المبلغ الإجمالي", Formatters.formatMoney(amount)))
+        if (isPartial) {
+            add(ReceiptLine.Field("إجمالي المستحق", Formatters.formatMoney(totalDue)))
+            if (previouslyPaid > 0.005) add(ReceiptLine.Field("المدفوع سابقًا", Formatters.formatMoney(previouslyPaid)))
+        }
+        add(ReceiptLine.Total(amountLabel, Formatters.formatMoney(amount)))
+        if (isPartial) {
+            add(ReceiptLine.Field("المتبقي", if (remaining > 0.005) Formatters.formatMoney(remaining) else "لا يوجد (مسدَّد)"))
+        }
         if (paidForMonth.isNotBlank()) add(ReceiptLine.Note("تم الدفع لشهر: $paidForMonth"))
         if (receivedBy.isNotBlank()) add(ReceiptLine.Note("استلم المبلغ: $receivedBy"))
         if (note.isNotBlank()) add(ReceiptLine.Note("ملاحظة: $note"))
